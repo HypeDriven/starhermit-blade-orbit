@@ -1,0 +1,15 @@
+{
+  "name": "blade-orbit",
+  "version": "1.0.0",
+  "description": "Blade Orbit — timing target game. Throw blades into a rotating target without striking steel or warded sigils.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/rules.test.mjs",
+    "serve": "node server.js"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}

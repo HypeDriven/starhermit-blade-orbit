@@ -1,0 +1,24 @@
+import { chromium } from 'playwright-core';
+const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', args: ['--no-sandbox', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+await page.addInitScript(() => {
+  const p = JSON.parse(localStorage.getItem('blade-orbit:progression') || '{}');
+  p.journeyUnlocked = 41;
+  localStorage.setItem('blade-orbit:progression', JSON.stringify(p));
+});
+await page.goto('http://localhost:39217', { waitUntil: 'networkidle' });
+await page.waitForFunction(() => window.__game?.phase === 'title');
+await page.click('#btn-journey');
+await page.locator('.journey-cell').nth(24).click();
+await page.click('#btn-setup-start');
+await page.waitForFunction(() => window.__game.phase === 'active', null, { timeout: 8000 });
+await page.waitForTimeout(1500);
+await page.screenshot({ path: '/tmp/bo-late-tier.png' });
+await page.evaluate(() => window.__game.doThrow());
+await page.waitForTimeout(120);
+await page.evaluate(() => window.__game.doThrow());
+await page.waitForTimeout(150);
+await page.screenshot({ path: '/tmp/bo-late-miss.png' });
+const st = await page.evaluate(() => ({ ...window.__game.session.state.score, misses: window.__game.session.state.misses }));
+console.log(JSON.stringify(st));
+await browser.close();

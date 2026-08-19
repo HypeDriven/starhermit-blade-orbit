@@ -1,0 +1,6 @@
+name=Blade Orbit
+launch=index.html
+server=server.js
+version=1.0.0
+ruleset=v1
+content=1
