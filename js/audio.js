@@ -1,11 +1,30 @@
 /**
  * Blade Orbit — audio module.
- * Fully procedural WebAudio: original short transients tied to logical events,
- * layered material impacts, quiet ambience, adaptive music stems.
+ * Authored one-shot samples (sfx/*.opus) are preferred per logical event and
+ * lazy-fetched/decoded after the user-gesture unlock; fully procedural WebAudio
+ * synthesis below remains the fallback while a sample loads or is missing:
+ * original short transients, layered material impacts, quiet ambience,
+ * adaptive music stems.
  * Buses: master → music / effects / ambience / voice. Captions emitted as text cues.
  */
 
 import { makeRng } from './rules.js';
+
+/** Logical event → authored sample basename (sfx/<name>.opus, see sfx/manifest.json). */
+const SFX_SAMPLES = {
+  throw: 'blade-throw',
+  embed: 'blade-embed',
+  'miss-blade': 'steel-clang',
+  'miss-marker': 'sigil-ward',
+  win: 'stage-win',
+  lose: 'stage-lose',
+  click: 'ui-click',
+  undo: 'ui-undo',
+  pause: 'ui-pause',
+  hint: 'ui-hint',
+  tick: 'countdown-tick',
+  go: 'countdown-go',
+};
 
 export class AudioEngine {
   constructor(settings, onCaption = () => {}) {
@@ -18,6 +37,7 @@ export class AudioEngine {
     this.musicSeed = makeRng('music:blade-orbit');
     this.enabled = true;
     this.started = false;
+    this.sampleCache = new Map(); // name → AudioBuffer | Promise | null (failed)
   }
 
   /** Must be called from a user gesture. Safe to call repeatedly. */
@@ -110,12 +130,54 @@ export class AudioEngine {
     return base * (0.94 + r.next() * 0.12);
   }
 
+  // --- authored samples (lazy fetch/decode after user-gesture start) --------
+
+  /** Fetch + decode + cache a sample once. Failures cache null, never retried. */
+  loadSample(name) {
+    let entry = this.sampleCache.get(name);
+    if (entry === undefined) {
+      entry = fetch(`sfx/${name}.opus`)
+        .then((r) => {
+          if (!r.ok) throw new Error(`sfx ${name}: HTTP ${r.status}`);
+          return r.arrayBuffer();
+        })
+        .then((buf) => this.ctx.decodeAudioData(buf))
+        .then((audio) => { this.sampleCache.set(name, audio); return audio; })
+        .catch(() => { this.sampleCache.set(name, null); return null; });
+      this.sampleCache.set(name, entry);
+    }
+    return entry;
+  }
+
+  /**
+   * Play the cached sample for an event through the effects bus.
+   * Returns true when it actually played; otherwise kicks off the lazy load
+   * so the synthesis fallback in event() covers this trigger only.
+   */
+  playSample(name, t0) {
+    const entry = this.sampleCache.get(name);
+    if (!entry || typeof entry.then === 'function') {
+      if (entry === undefined && this.ctx) this.loadSample(name);
+      return false;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = entry;
+    src.connect(this.buses.effects);
+    src.start(t0);
+    return true;
+  }
+
   // --- logical events → sounds + captions -----------------------------------
 
   event(type, detail = {}) {
     if (!this.started || !this.enabled) { this.captionFor(type); return; }
     this.resume();
     const t0 = this.ctx.currentTime + 0.001;
+    const sampleName = SFX_SAMPLES[type];
+    if (sampleName && this.playSample(sampleName, t0)) {
+      this.captionFor(type, detail);
+      return;
+    }
     switch (type) {
       case 'throw': {
         const f = this.variant(900, 'throw');

@@ -1,0 +1,74 @@
+[
+  {
+    "name": "blade-throw",
+    "seconds": 1,
+    "prompt": "A quick whoosh of a small steel blade spinning through air, short swish with a faint metallic ring",
+    "event": "throw"
+  },
+  {
+    "name": "blade-embed",
+    "seconds": 1,
+    "prompt": "A heavy wooden thunk as a knife blade embeds into a solid log target, sharp knock with a brief wood crunch",
+    "event": "embed"
+  },
+  {
+    "name": "steel-clang",
+    "seconds": 2,
+    "prompt": "A bright metallic clang of a knife blade ricocheting off hard steel, ringing decay",
+    "event": "miss-blade"
+  },
+  {
+    "name": "sigil-ward",
+    "seconds": 2,
+    "prompt": "A dull resonant bonk on an enchanted warded surface, low descending warble with a faint magical hum",
+    "event": "miss-marker"
+  },
+  {
+    "name": "stage-win",
+    "seconds": 3,
+    "prompt": "A short triumphant fanfare of rising brass and bell chimes, cheerful victory flourish",
+    "event": "win"
+  },
+  {
+    "name": "stage-lose",
+    "seconds": 2,
+    "prompt": "A short descending disappointed phrase of soft mallet notes falling in pitch",
+    "event": "lose"
+  },
+  {
+    "name": "ui-click",
+    "seconds": 1,
+    "prompt": "A short crisp wooden button tap, clean percussive click",
+    "event": "click"
+  },
+  {
+    "name": "ui-undo",
+    "seconds": 1,
+    "prompt": "A soft quick rising wooden tick, gentle reversal blip",
+    "event": "undo"
+  },
+  {
+    "name": "ui-pause",
+    "seconds": 1,
+    "prompt": "A single soft muted wooden knock, low and calm",
+    "event": "pause"
+  },
+  {
+    "name": "ui-hint",
+    "seconds": 1,
+    "prompt": "Two gentle rising glass bell chimes, light and helpful",
+    "event": "hint"
+  },
+  {
+    "name": "countdown-tick",
+    "seconds": 1,
+    "prompt": "A single sharp short metronome tick struck on a wooden block",
+    "event": "tick"
+  },
+  {
+    "name": "countdown-go",
+    "seconds": 2,
+    "prompt": "A bright clear bell strike, energetic go signal with a shimmering tail",
+    "event": "go"
+  }
+]
