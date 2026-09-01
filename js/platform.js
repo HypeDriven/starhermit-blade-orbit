@@ -36,7 +36,10 @@ export class Platform {
       const body = await res.json();
       const t1 = Date.now();
       const rtt = t1 - t0;
-      this.clockOffsetMs = body.now + rtt / 2 - t1;
+      // Hosts expose the epoch under different keys (`now`, `serverTime`, `epochMs`).
+      const serverMs = Number(body.now ?? body.serverTime ?? body.epochMs);
+      if (!Number.isFinite(serverMs)) throw new Error('no-time');
+      this.clockOffsetMs = serverMs + rtt / 2 - t1;
       this.hosted = true;
     } catch {
       this.hosted = false;
