@@ -76,6 +76,19 @@ button, input, select { font: inherit; }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
 .profile-chip { color: var(--ink-dim); font-size: 0.9rem; }
 
+/* Narrow screens: wrap the top bar so all controls stay inside the viewport */
+@media (max-width: 560px) {
+  #topbar {
+    flex-wrap: wrap;
+    row-gap: 0.25rem;
+    padding: calc(0.5rem + var(--sat)) calc(0.75rem + var(--sar)) 0.5rem calc(0.75rem + var(--sal));
+  }
+  .game-title { font-size: 1rem; }
+  .server-clock { font-size: 0.75rem; min-width: 0; }
+  .topbar-actions { gap: 0.25rem; }
+  .topbar-actions .btn { padding: 0.4rem 0.6rem; }
+}
+
 /* ---------- main layout ---------- */
 
 #main {
