@@ -14,7 +14,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dailyContent, validateContent } from './js/content.js';
 import { verifyReplay } from './js/session.js';
-import { compareResults } from './js/rules.js';
+import { compareResults, canonicalJson } from './js/rules.js';
 
 const ROOT = fileURLToPath(new URL('.', import.meta.url));
 const PORT = process.env.PORT || 8080;
@@ -82,8 +82,16 @@ const server = http.createServer(async (req, res) => {
       return json(400, { error: 'only-daily-ranked' });
     }
     const expected = dailyContent(new Date());
-    if (envelope.content.id !== expected.id || envelope.seed !== expected.seed) {
+    // The server owns the deal: the submitted content must be exactly the daily
+    // the server itself generated (id, seed, and every field that drives the
+    // simulation/replay), not merely a well-formed lookalike. A forged, easier
+    // board is therefore rejected before replays are trusted.
+    if (canonicalJson(envelope.content) !== canonicalJson(expected)) {
       return json(400, { error: 'stale-or-wrong-seed' });
+    }
+    if (!envelope.result || typeof envelope.result !== 'object' ||
+        typeof envelope.result.sessionId !== 'string' || !envelope.result.sessionId) {
+      return json(400, { error: 'bad-result' });
     }
     const v = validateContent(envelope.content);
     if (!v.ok) return json(400, { error: 'invalid-content' });

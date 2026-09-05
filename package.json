@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/rules.test.mjs",
+    "test:e2e": "node tests/e2e.mjs",
     "serve": "node server.js"
   },
   "license": "UNLICENSED",

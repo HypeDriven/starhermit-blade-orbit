@@ -4,10 +4,50 @@
  * throws (rules-driven timing) → results, plus pause/resume, undo/hint,
  * settings, and screenshots at each stage.
  */
+import http from 'node:http';
+import { spawn } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 
-const BASE = process.env.BASE_URL || 'http://localhost:39217';
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOT = (n) => `/tmp/bo-e2e-${n}.png`;
+
+/* The e2e self-hosts the game so `node tests/e2e.mjs` runs offline with no
+ * pre-started server: it spawns the game's own backend on an ephemeral port and
+ * serves the distribution through it. Set BASE_URL to test against an external
+ * deployment instead. */
+let serverChild = null;
+async function freePort() {
+  return await new Promise((resolve, reject) => {
+    const srv = http.createServer();
+    srv.on('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const port = srv.address().port;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+async function startServer() {
+  const port = process.env.PORT ? Number(process.env.PORT) : await freePort();
+  serverChild = spawn(process.execPath, [join(__dirname, '..', 'server.js')], {
+    env: { ...process.env, PORT: String(port) },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  serverChild.stderr.on('data', (d) => process.stderr.write(d));
+  serverChild.stdout.on('data', (d) => process.stderr.write(d));
+  const url = `http://127.0.0.1:${port}`;
+  for (let i = 0; i < 50; i++) {
+    try {
+      const res = await fetch(`${url}/api/v1/time`);
+      if (res.ok) return url;
+    } catch { /* not up yet */ }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  serverChild.kill();
+  throw new Error(`server.js did not become ready at ${url}`);
+}
+const BASE = process.env.BASE_URL || (await startServer());
 
 const browser = await chromium.launch({
   executablePath: '/usr/bin/google-chrome',
@@ -190,10 +230,14 @@ await step('daily score submission validates against server', async () => {
   if (status < 1) throw new Error('score not on board');
 });
 
+await browser.close();
+if (serverChild) {
+  serverChild.kill();
+  await new Promise((r) => serverChild.once('exit', r));
+}
 if (errors.length) {
   console.log('PAGE ERRORS:\n' + errors.join('\n'));
   process.exitCode = 1;
 } else {
   console.log('\nE2E PASS — no page errors');
 }
-await browser.close();

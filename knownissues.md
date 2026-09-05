@@ -9,82 +9,48 @@ alongside the game's own unit tests and end-to-end suite.
 | --- | --- |
 | `npm test` | 17/17 pass, 0 fail |
 | `node --check` on all modules | clean (`js/*.js`, `server.js`, `tests/*.mjs`) |
-| `tests/e2e.mjs` (headless Chrome, `BASE_URL=http://localhost:39301`) | PASS — 14/14 steps, "E2E PASS — no page errors" |
+| `tests/e2e.mjs` (headless Chrome) | PASS — 14/14 steps, "E2E PASS — no page errors" — self-hosts the game: spawns `server.js` on an ephemeral port and serves the distribution through it (no pre-started server required) |
 
-## Confirmed defects
+## Confirmed defects — RESOLVED
 
-Defects below were each verified by reading the source, and defects 1 and 2 were additionally
-reproduced against a running copy of `server.js`.
+All three confirmed defects below were reproduced against the fixed source (the server fixes were
+verified against `server.js` running on a scratch port; the rules fix was verified with a direct
+`previewThrow` check on the worked example). Each entry is removed from the open list; there are **no
+open confirmed defects**.
 
-### 1. Daily leaderboard accepts a forged content definition — any score can be manufactured
+### 1. Daily leaderboard accepts a forged content definition — RESOLVED
 
-- **File:** `server.js:80-93` (`/api/v1/scores` handler), with `js/session.js:128-151` (`verifyReplay`)
-- **Trigger:** `POST /api/v1/scores` with a replay envelope whose `content.id` and `seed` equal
-  today's daily values, but whose remaining content fields describe a much easier wheel.
-- **Behaviour:** The handler checks only `envelope.content.id !== expected.id || envelope.seed !== expected.seed`
-  (line 84) and then `validateContent(envelope.content)` (line 87), which only proves the *client-supplied*
-  content is internally legal. `verifyReplay` then builds the game from that same client-supplied content
-  (`createGame(envelope.content)`, `js/session.js:133`). The published daily content is never compared
-  field-by-field against the submitted one, so `goal`, `missesAllowed`, `rotation`, `preplaced`, `par`
-  and `timeLimitTicks` are entirely attacker-controlled. The replay then verifies honestly against the
-  fake board and the resulting score is recorded on the real daily board.
-- **Expected:** spec.md §5 "Determinism, replay, and security" — the server owns the deal and the result;
-  a competitive claim must be replayed against the *server's* copy of the daily content, not the client's.
-- **Evidence:** submitting a forged envelope (same `id`/`seed` as `daily-2026-08-20`, `goal: 25`,
-  `preplaced: []`, `rotation.baseSpeed: 0.0005`, `par.score: 999999`) against a copy of the server:
+**Fix (server.js):** the `/api/v1/scores` handler now compares the submitted `envelope.content`
+against the server's own `dailyContent(new Date())` via `canonicalJson` (added to the rules import) and
+returns `400 {error:'stale-or-wrong-seed'}` on any mismatch. The server owns the deal: a competitive
+claim must supply exactly the board the server generated, so goal, missesAllowed, rotation, preplaced,
+par and timeLimitTicks can no longer be attacker-controlled. `verifyReplay` still runs against the
+server-verified content.
 
-  ```
-  validateContent(forged): {"ok":true,"errors":[]}
-  forged result: {"won":true,"total":10268,"components":{"hits":2500,"precision":268,"combo":7500,...},"embedded":25}
-  SERVER RESPONSE 200 {"ok":true,"rank":1}
-  ```
+**Verification:** a forged envelope (same id/seed as today's daily, `goal:25`, `preplaced:[]`,
+`par.score:999999`) now returns `400 {"error":"stale-or-wrong-seed"}` instead of `200 {"ok":true,"rank":1}`.
+Legitimate submissions are unaffected — the game's own e2e daily run lands on the board (`entries:1`) and
+passes.
 
-  Legitimate entries produced by the game's own e2e run on the same board score 1787-1791; the forged
-  entry took rank 1 with 10268.
+### 2. Remote crash: `POST /api/v1/scores` without a `result` field — RESOLVED
 
-### 2. Remote crash: `POST /api/v1/scores` without a `result` field kills the server process
+**Fix (server.js):** the handler now rejects a submission whose `result` is missing or malformed before
+any replay/dereference — `if (!envelope.result || typeof envelope.result !== 'object' ||
+typeof envelope.result.sessionId !== 'string' || !envelope.result.sessionId) return json(400,...)`.
 
-- **File:** `server.js:97` (`sessionId: envelope.result.sessionId`)
-- **Trigger:** any well-formed score submission that omits the `result` key.
-- **Behaviour:** nothing between parsing (line 77) and line 97 validates `envelope.result`.
-  `verifyReplay` deliberately tolerates a missing `result` — `js/session.js:148-149` guard both
-  comparisons with `if (envelope.result && ...)` — so `check.ok` can be `true` with `result` absent.
-  Line 97 then dereferences `undefined`. The throw happens inside the `async` `http.createServer`
-  callback, so it becomes an unhandled rejection and Node exits. There is no `try/catch` around the
-  handler and no `process.on('uncaughtException')`.
-- **Expected:** malformed input should return `400`, not terminate the service. spec.md §5 requires the
-  server to be the authoritative, resilient side of the contract.
-- **Evidence:** server log after one such request:
+**Verification:** a well-formed score submission omitting `result` now returns `400 {"error":"bad-result"}`;
+a follow-up `GET /api/v1/time` still returns `200`, confirming the process no longer crashes.
 
-  ```
-  server.js:97
-        sessionId: envelope.result.sessionId,
-                                   ^
-  TypeError: Cannot read properties of undefined (reading 'sessionId')
-      at Server.<anonymous> (.../server.js:97:34)
-  ```
+### 3. `previewThrow` reports the clearance of the *nearest* slot, not the *tightest* one — RESOLVED
 
-  The process exited; subsequent `GET /api/v1/time` returned no response (curl code 000).
+**Fix (js/rules.js):** the `best` slot in `previewThrow` is now tracked by smallest clearance
+(`if (!best || clearance < best.clearance)`) instead of smallest centre-to-centre distance, so the
+reported/`findBestThrowTick`-ranked clearance is the binding (minimum-clearance) gap across all slots
+regardless of type-dependent `SLOT_HALF`.
 
-### 3. `previewThrow` reports the clearance of the *nearest* slot, not the *tightest* one
-
-- **File:** `js/rules.js:204-221` (`previewThrow`), specifically line 211
-- **Trigger:** a throw whose contact angle lies between a blade and a marker, where the marker is
-  angularly further away but has a larger half-width.
-- **Behaviour:** the loop tracks `best` by smallest centre-to-centre distance `d`
-  (`if (!best || d < best.d)`), but the value it later returns is `clearance = d - (SLOT_HALF[slot.type] + BLADE_HALF)`.
-  `SLOT_HALF` is type-dependent — `blade: 0.087`, `marker: 0.117` (`js/rules.js:17-23`) — so the
-  minimum-`d` slot is not necessarily the minimum-clearance slot. Worked example: marker at `d = 0.20`
-  has clearance `0.20 - 0.117 - 0.075 = 0.008`; blade at `d = 0.19` has clearance
-  `0.19 - 0.087 - 0.075 = 0.028`. The code selects the blade and reports `0.028`, overstating the real
-  gap by 3.5x.
-- **Expected:** spec.md §2 "Scoring and victory" — score "spacing precision". The precision component
-  (`js/rules.js:292-294`, `Math.round(100 * Math.min(1, clearance / MAX_CLEARANCE))`) is therefore
-  awarded on the wrong measurement, and `findBestThrowTick` (`js/rules.js:227-238`), which the hint
-  system ranks by `p.clearance`, can recommend a tick that is not the safest one.
-- **Evidence:** the code at line 211 compares `d`, while line 215/219 return a `clearance` derived from
-  a type-dependent half-width. Blocking detection itself is unaffected because it returns early per slot
-  (lines 212-217), so this shows up only as a scoring/hint inaccuracy, never as a wrong hit/miss verdict.
+**Verification:** on the worked example (marker `d=0.2007`/clearance `0.0087`, blade `d=0.1902`/clearance
+`0.0282`) `previewThrow` now reports `0.0087` (the tightest, marker gap) rather than the previous
+`0.0282`. Existing scoring/hint tests (empty-wheel precision, `findBestThrowTick` embed search) still pass.
 
 ## Suspected — not confirmed
 
@@ -99,14 +65,15 @@ reproduced against a running copy of `server.js`.
   `s` + base36, i.e. ASCII lowercase alphanumerics, for which every common ICU collation agrees with
   code-unit order. Reproducing a divergence would need a session id from another source.
 
-### 2. `envelope.content.version` is recorded without being checked
+### 2. `envelope.content.version` is recorded without being checked — RESOLVED (covered)
 
-- **File:** `server.js:103` (`contentVersion: envelope.content.version`)
-- **Concern:** the value written to the leaderboard is the client's, and `validateContent` only requires
-  it to be an integer >= 1 (`js/content.js:343`). Board rows can therefore carry a content version that
-  was never published.
-- **Why unconfirmed:** nothing in the shipped code reads `contentVersion` back, so there is no
-  demonstrable behavioural consequence today.
+- **File:** `server.js` (`contentVersion: envelope.content.version`)
+- **Concern:** the value written to the leaderboard was the client's, and `validateContent` only required
+  it to be an integer >= 1 (`js/content.js:343`), so board rows could carry a content version that was
+  never published.
+- **Resolution:** the Defect 1 fix now requires the whole `envelope.content` (including `version`) to
+  be `canonicalJson`-identical to the server's own `dailyContent`. `contentVersion` written to the
+  leaderboard is therefore always the server-published version; the concern is closed by the same change.
 
 ## Checked, no defects found
 
@@ -134,8 +101,9 @@ reproduced against a running copy of `server.js`.
 
 ## Runtime artefacts
 
-Running the shipped `tests/e2e.mjs` and the exploit reproductions created an untracked `data/`
-directory (the leaderboard store, `data/scores.json`) inside this game folder. It is runtime state, not
-a source change; it is being cleaned up centrally. The forged-content and crash reproductions were run
-against a **copy** of the game in a scratch directory, so no forged entry was written to this folder's
-board — only the game's own e2e submission is present here.
+`tests/e2e.mjs` now self-hosts the game (it spawns `server.js` on an ephemeral port), and the daily
+submission step writes an untracked `data/` directory (`data/scores.json`, the leaderboard store) inside
+this game folder. That is runtime state, not a source change; it is removed after verification (the
+board is regenerated per UTC day and never shipped). The forged-content / crash reproductions in the
+Resolved entries above were run against the fixed source on scratch ports, and no forged entry was
+written to this folder's board — only the game's own e2e submission is ever present here.

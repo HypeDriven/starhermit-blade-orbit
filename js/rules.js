@@ -208,7 +208,9 @@ export function previewThrow(state, tick) {
     const d = Math.abs(angleDelta(contact, slot.angle));
     const blocked = d < SLOT_HALF[slot.type] + BLADE_HALF;
     const clearance = d - (SLOT_HALF[slot.type] + BLADE_HALF);
-    if (!best || d < best.d) best = { d, slot, blocked, clearance };
+    // Track the tightest gap (min clearance), not min centre-to-centre distance:
+    // SLOT_HALF is type-dependent so the nearest slot is not always the binding one.
+    if (!best || clearance < best.clearance) best = { d, slot, blocked, clearance };
     if (blocked) {
       return {
         outcome: slot.type === 'marker' ? 'hit-marker' : 'hit-blade',
