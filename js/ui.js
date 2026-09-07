@@ -121,11 +121,15 @@ class UI {
 
   showOverlay(name) {
     this.screenBeforeOverlay = this.currentScreen;
+    // Help/Settings can be opened from the top bar mid-round: the sim must not
+    // keep running (and burning a time limit) behind the overlay.
+    this.h.action('overlay-open');
     this.showScreen(name);
   }
 
   closeOverlay() {
     this.showScreen(this.screenBeforeOverlay);
+    this.h.action('overlay-close');
   }
 
   focusFirst(containerId) {

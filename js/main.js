@@ -30,6 +30,7 @@ class Game {
     this.progression = store.getProgression();
     this.platform = new Platform();
     this.inputLocked = false;
+    this.overlayPaused = false; // set when Help/Settings auto-paused a live round
     this.accumulator = 0;
     this.lastFrame = 0;
     this.idleTick = 0; // cosmetic spin for menus/countdown
@@ -85,7 +86,7 @@ class Game {
 
     this.buildMenus();
     this.ui.showScreen('title');
-    this.ui.updateTitle(this.progression, !!store.loadSnapshot());
+    this.ui.updateTitle(this.progression, this.hasResumableSnapshot());
     this.phase = 'title';
     this.bindInput();
     this.lastFrame = performance.now();
@@ -211,13 +212,18 @@ class Game {
   runCountdown() {
     const steps = ['3', '2', '1', 'GO'];
     let i = 0;
+    // The wheel keeps turning through "3 · 2 · 1 · GO", but the simulation clock
+    // only starts at GO: the countdown must not eat a stage's time limit or its
+    // par-time bonus. Pre-roll ticks are negative and reach 0 exactly at GO.
+    const stepMs = this.settings.reducedMotion ? 500 : 700;
+    this.countdownTick = -(steps.length * stepMs) / TICK_MS;
     const step = () => {
       if (this.phase !== 'countdown') return;
       if (i < steps.length) {
         this.ui.showCountdown(steps[i]);
         this.audio.event(i === steps.length - 1 ? 'go' : 'tick');
         i++;
-        setTimeout(step, this.settings.reducedMotion ? 500 : 700);
+        setTimeout(step, stepMs);
       } else {
         this.ui.showCountdown(null);
         if (this.session?.content.kind === 'tutorial') {
@@ -325,11 +331,14 @@ class Game {
     if (this.session) store.saveSnapshot(this.session.content.id, this.session.snapshotJson());
     this.audio.event('pause');
     this.audio.suspend();
-    if (reason === 'user') this.ui.showScreen('pause');
+    // 'overlay' keeps Help/Settings on screen; every other reason (including a
+    // hidden tab) must surface the pause panel so the frozen round is explained.
+    if (reason !== 'overlay') this.ui.showScreen('pause');
   }
 
   resume() {
     if (this.phase !== 'paused') return;
+    this.overlayPaused = false;
     this.audio.resume();
     this.ui.showScreen(null);
     this.ui.setPlayingChrome(true);
@@ -347,7 +356,7 @@ class Game {
     this.ui.showTutorialBanner(null);
     this.buildMenus();
     this.ui.showScreen('title');
-    this.ui.updateTitle(this.progression, !!store.loadSnapshot());
+    this.ui.updateTitle(this.progression, this.hasResumableSnapshot());
     if (this.renderer) {
       const demo = dailyContent(this.platform.serverNow());
       this.renderer.loadContent(demo, demo.theme);
@@ -493,19 +502,38 @@ class Game {
         this.ui.updateTitle(this.progression, false);
         this.ui.announce('All progress erased.');
         break;
+      case 'overlay-open':
+        if (this.phase === 'active' || this.phase === 'countdown') {
+          this.overlayPaused = true;
+          this.pause('overlay');
+        }
+        break;
+      case 'overlay-close':
+        if (this.overlayPaused) { this.overlayPaused = false; this.resume(); }
+        break;
       case 'settings-closed': break;
       case 'title-shown': break;
       default: break;
     }
   }
 
+  /** A snapshot is only offered when its stage can still be reconstructed. */
+  hasResumableSnapshot() {
+    const snap = store.loadSnapshot();
+    return !!(snap && this.findContentById(snap.contentId));
+  }
+
   resumeSnapshot() {
     const snap = store.loadSnapshot();
-    if (!snap) return;
-    const content = this.findContentById(snap.contentId);
-    if (!content) { store.clearSnapshot(); return; }
-    const session = Session.restore(content, snap.json);
-    if (!session) { store.clearSnapshot(); return; }
+    const content = snap ? this.findContentById(snap.contentId) : null;
+    const session = content ? Session.restore(content, snap.json) : null;
+    if (!session) {
+      // Never leave the player pressing a button that silently does nothing.
+      store.clearSnapshot();
+      this.ui.updateTitle(this.progression, false);
+      this.ui.announceAlert('That paused round could no longer be restored.');
+      return;
+    }
     this.session = session;
     this.pendingContent = content;
     if (this.renderer) {
@@ -514,10 +542,13 @@ class Game {
       this.renderer.syncState(session.state);
     }
     this.audio.startAmbience(themeById(content.theme).ambience);
+    this.audio.startMusic(content.tier ? Math.min(1, content.tier / 6) : 0.2);
+    this.platform.startPresence();
     this.ui.setPlayingChrome(true);
     this.ui.showScreen(null);
     this.ui.buildRailActions(this.railActions(content));
     this.ui.updateHud(session.state, content, this.hudFlags());
+    this.ui.updateBoardMirror(session.state);
     this.phase = 'active';
     this.ui.announce('Round resumed from where you left off.');
   }
@@ -590,7 +621,14 @@ class Game {
 
     this.pollGamepad();
 
-    const simRunning = this.phase === 'active' || this.phase === 'countdown';
+    if (this.phase === 'countdown' && this.session) {
+      // Cosmetic pre-roll: the wheel spins toward tick 0 without advancing the sim.
+      this.countdownTick = Math.min(0, (this.countdownTick || 0) + dtMs / TICK_MS);
+      this.renderer?.update(dtMs, { ...this.session.state, tick: this.countdownTick }, 0);
+      return;
+    }
+
+    const simRunning = this.phase === 'active';
     if (simRunning && this.session) {
       this.accumulator += dtMs;
       let steps = 0;

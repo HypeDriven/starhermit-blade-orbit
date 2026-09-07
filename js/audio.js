@@ -290,7 +290,13 @@ export class AudioEngine {
     if (!this.started || this.musicTimer) return;
     const scale = [220, 262, 294, 330, 392, 440];
     const step = () => {
-      if (!this.ctx || this.ctx.state !== 'running') return;
+      if (!this.ctx) return;
+      if (this.ctx.state !== 'running') {
+        // Suspended (paused / tab hidden): keep the stem scheduled so music
+        // returns on resume instead of dying with the first pause.
+        this.musicTimer = setTimeout(step, 500);
+        return;
+      }
       const r = this.musicSeed;
       const t0 = this.ctx.currentTime + 0.02;
       const notes = 1 + (r.next() < 0.3 + intensity * 0.4 ? 1 : 0);

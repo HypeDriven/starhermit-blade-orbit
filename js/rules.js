@@ -206,17 +206,18 @@ export function previewThrow(state, tick) {
   let best = null;
   for (const slot of state.slots) {
     const d = Math.abs(angleDelta(contact, slot.angle));
-    const blocked = d < SLOT_HALF[slot.type] + BLADE_HALF;
     const clearance = d - (SLOT_HALF[slot.type] + BLADE_HALF);
     // Track the tightest gap (min clearance), not min centre-to-centre distance:
     // SLOT_HALF is type-dependent so the nearest slot is not always the binding one.
-    if (!best || clearance < best.clearance) best = { d, slot, blocked, clearance };
-    if (blocked) {
-      return {
-        outcome: slot.type === 'marker' ? 'hit-marker' : 'hit-blade',
-        contact, clearance: Math.max(0, clearance), blocker: { ...slot },
-      };
-    }
+    // The same rule picks the blocker: slot order in the array must never decide
+    // which hazard was struck when two overlapping slots both block the contact.
+    if (!best || clearance < best.clearance) best = { d, slot, clearance };
+  }
+  if (best && best.clearance < 0) {
+    return {
+      outcome: best.slot.type === 'marker' ? 'hit-marker' : 'hit-blade',
+      contact, clearance: 0, blocker: { ...best.slot },
+    };
   }
   const clearance = best ? Math.max(0, best.clearance) : Math.PI;
   return { outcome: 'embed', contact, clearance, blocker: null };

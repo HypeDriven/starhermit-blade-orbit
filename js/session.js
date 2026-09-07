@@ -40,12 +40,16 @@ export class Session {
   /** Issue a validated command. Returns {applied, events, error}. */
   throw() {
     const cmd = { id: `${this.sessionId}:${++this.commandSeq}`, type: 'throw', tick: this.state.tick };
-    if (this.allowUndo) this.snapshots.push(serialize(this.state));
+    const before = this.allowUndo ? serialize(this.state) : null;
     const { state, events, error } = applyCommand(this.state, cmd);
     if (error) {
+      // Rejected commands leave no undo step and no log entry, so an undo after a
+      // rejection can never pop a *previous* legitimate command off the replay log.
+      this.commandSeq -= 1;
       this.state = { ...this.state, invalidCount: this.state.invalidCount + 1 };
       return { applied: false, events: [], error };
     }
+    if (before !== null) this.snapshots.push(before);
     this.state = state;
     this.commands.push(cmd);
     if (this.state.tick % 120 === 0 || this.state.status !== 'active') {
@@ -111,7 +115,8 @@ export class Session {
   static restore(content, snapshotJson) {
     const { state, error } = deserialize(snapshotJson);
     if (error || !state || state.contentId !== content.id) return null;
-    const s = new Session(content, { allowUndo: true });
+    const allowUndo = content.kind === 'practice' || content.kind === 'tutorial';
+    const s = new Session(content, { allowUndo });
     s.state = state;
     return s;
   }

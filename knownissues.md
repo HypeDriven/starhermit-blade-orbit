@@ -1,5 +1,21 @@
 # Known Issues — Blade Orbit
 
+## Review pass 2026-09-07 (Opus 5) — fixed
+
+| Area | Defect | Fix |
+| --- | --- | --- |
+| Rules | `previewThrow` returned the **first** blocking slot in array order, so when a blade and a sigil both overlapped the contact the recorded hazard (and its −100 vs −200 penalty and loss reason) depended on slot ordering | the blocking slot is now the one with the minimum clearance (`js/rules.js`); covered by a new unit test |
+| Session | a rejected throw pushed an undo snapshot before validation, so a later `undo()` popped a *previous* legitimate command off the replay log | the snapshot is pushed only after the command applies and `commandSeq` is rolled back on rejection (`js/session.js`); new unit test |
+| Session | `Session.restore` always allowed undo, regardless of mode | resumed sessions use the same practice/tutorial rule as `startSession` |
+| Loop | the simulation clock ran during the 3·2·1·GO countdown, spending ~2.8 s of every time limit and par-time bonus before the player could act | the countdown is now a cosmetic negative pre-roll; the sim starts at GO (`js/main.js`) |
+| UI | Help/Settings opened from the top bar mid-round left the round running (and the timer draining) behind the overlay | overlays auto-pause a live round and resume on close (`js/ui.js`, `js/main.js`) |
+| UI | backgrounding the tab paused the round without any visible explanation — the game looked frozen | a hidden tab now surfaces the pause panel |
+| UI | "Resume paused round" was offered for snapshots whose stage cannot be rebuilt (e.g. randomly seeded practice), and clicking it did nothing | the title only offers resumable snapshots; the stale case clears the snapshot and announces it |
+| Audio | the generative music stem stopped scheduling the first time the context was suspended (pause / hidden tab) and never came back | the stem re-schedules while suspended |
+| Boot | a second `<link rel="icon">` data URI overrode the shipped `favicon.svg`; `<meta charset>` was not the first head element | duplicate icon removed, charset moved first |
+| Server | the per-IP rate-limit map was never pruned (slow unbounded growth); `/api/v1/scores/<id>` answered any method | expired buckets are dropped past 1000 entries; the read route is `GET`-only |
+| Repo | `LICENSE.md` was missing; the runtime `data/` leaderboard store was not ignored | PolyForm Noncommercial 1.0.0 added; `data/` added to `.gitignore` |
+
 QA pass 2026-08-20. Static review driven by Qwen3.8 27B on local5090 (HauhauCS Q3_K_P, 32k ctx),
 alongside the game's own unit tests and end-to-end suite.
 

@@ -292,3 +292,42 @@ test('compareResults: completion, invalids, ticks, session id', () => {
   assert.ok(compareResults(base, { ...base, sessionId: 'b' }) < 0);
   assert.equal(compareResults(base, { ...base }), 0);
 });
+
+// --- blocker selection & session command log ------------------------------------------
+
+test('previewThrow reports the tightest blocker, not the first slot in the array', () => {
+  // Contact angle at tick 0 is 0 (startAngle 0). The blade barely blocks
+  // (clearance -0.002); the marker blocks far harder (clearance -0.092).
+  const s = createGame(SIMPLE);
+  s.slots = [
+    { angle: 0.16, type: 'blade' },
+    { angle: (Math.PI * 2) - 0.10, type: 'marker' },
+  ];
+  const p = previewThrow(s, 0);
+  assert.equal(p.outcome, 'hit-marker');
+  assert.equal(p.blocker.type, 'marker');
+  // Slot order must not change the verdict.
+  s.slots.reverse();
+  assert.equal(previewThrow(s, 0).outcome, 'hit-marker');
+});
+
+test('a rejected throw leaves the undo stack and command log intact', async () => {
+  const { Session } = await import('../js/session.js');
+  const session = new Session(SIMPLE, { allowUndo: true });
+  for (let i = 0; i < 2; i++) {
+    const best = findBestThrowTick(session.state);
+    session.tick(best.tick - session.state.tick);
+    assert.equal(session.throw().error, null);
+  }
+  assert.equal(session.state.status, 'won');
+  assert.equal(session.commands.length, 2);
+
+  const rejected = session.throw(); // terminal state → rejected
+  assert.equal(rejected.applied, false);
+  assert.equal(session.commands.length, 2);
+
+  assert.equal(session.undo().ok, true);
+  assert.equal(session.commands.length, 1);
+  assert.equal(session.state.embedded, 1);
+  assert.equal(session.state.status, 'active');
+});

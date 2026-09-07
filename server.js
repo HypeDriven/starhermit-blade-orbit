@@ -45,7 +45,15 @@ const buckets = new Map();
 function rateLimited(ip, cost = 1, perMinute = 60) {
   const now = Date.now();
   let b = buckets.get(ip);
-  if (!b || now - b.start > 60000) { b = { start: now, used: 0 }; buckets.set(ip, b); }
+  if (!b || now - b.start > 60000) {
+    // Drop expired buckets before adding a new one: the map is keyed by remote
+    // address and would otherwise grow for the lifetime of the process.
+    if (buckets.size > 1000) {
+      for (const [key, old] of buckets) if (now - old.start > 60000) buckets.delete(key);
+    }
+    b = { start: now, used: 0 };
+    buckets.set(ip, b);
+  }
   b.used += cost;
   return b.used > perMinute;
 }
@@ -122,7 +130,7 @@ const server = http.createServer(async (req, res) => {
     return json(200, { ok: true, rank: board.indexOf(entry) + 1 });
   }
 
-  if (url.pathname.startsWith('/api/v1/scores/')) {
+  if (url.pathname.startsWith('/api/v1/scores/') && req.method === 'GET') {
     const id = decodeURIComponent(url.pathname.slice('/api/v1/scores/'.length));
     const board = (scores[id] || []).slice(0, 50);
     return json(200, { entries: board, label: 'ranked' });
