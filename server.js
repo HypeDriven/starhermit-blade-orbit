@@ -25,7 +25,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.txt': 'text/plain',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
-  '.opus': 'audio/ogg',
+  '.opus': 'audio/ogg', '.webp': 'image/webp', '.glb': 'model/gltf-binary',
 };
 
 // --- tiny persistent leaderboard store --------------------------------------
@@ -152,6 +152,8 @@ const server = http.createServer(async (req, res) => {
   const file = join(ROOT, path);
   if (!file.startsWith(ROOT)) return json(403, { error: 'forbidden' });
   if (path.startsWith('/data/')) return json(403, { error: 'forbidden' });
+  // dev-only material is never served: tests, tooling, dependencies, dotfiles
+  if (/^\/(tests|tools|node_modules)(\/|$)/.test(path) || /\/\./.test(path)) return json(404, { error: 'not-found' });
   try {
     const data = await readFile(file);
     res.writeHead(200, {

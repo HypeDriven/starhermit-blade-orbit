@@ -16,3 +16,8 @@ Generated with MOSS-SoundEffect v2.0, 48 kHz mono Opus (96 kbps VBR, loudness-no
 | ui-hint.opus | hint | Two gentle rising glass bell chimes, light and helpful |
 | countdown-tick.opus | tick | A single sharp short metronome tick struck on a wooden block |
 | countdown-go.opus | go | A bright clear bell strike, energetic go signal with a shimmering tail |
+| ambience-hearth.opus | ambience-hearth | Quiet crackling hearth fire inside a wooden hall, soft embers popping, low warm room tone, gentle and continuous with no sudden events |
+| ambience-wind.opus | ambience-wind | Low steady wind moaning through a dark stone forge at night, a faint distant metal creak, continuous and calm with no sudden events |
+| ambience-chimes.opus | ambience-chimes | Soft distant wind chimes and a gentle breeze moving through a mountain shrine garden, sparse and calm, continuous |
+| achievement-chime.opus | achievement | A sparkling ascending celesta and glass bell flourish, bright and rewarding, short |
+| combo-chime.opus | combo | A quick bright rising two-note metallic ping, a small triumphant accent, very short |

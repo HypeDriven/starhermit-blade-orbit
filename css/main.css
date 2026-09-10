@@ -267,6 +267,15 @@ body[data-contrast="high"] .btn:hover { background: #2a2a2a; }
 .panel-footer { display: flex; justify-content: space-between; gap: 0.75rem; margin-top: 1.2rem; }
 
 .panel-title { text-align: center; }
+/* Title key art: authored stage backdrop behind the dark scrim; the plain scrim
+   still paints if the image fails, and high contrast drops it entirely. */
+#screen-title {
+  background:
+    linear-gradient(#100a06b8, #100a06d9),
+    url("../assets/title-backdrop.webp") center / cover no-repeat,
+    #100a06;
+}
+body[data-contrast="high"] #screen-title { background: #000000e6; }
 .title-big {
   font-size: clamp(2.2rem, 7vw, 3.4rem);
   letter-spacing: 0.1em; margin-bottom: 0.2rem;

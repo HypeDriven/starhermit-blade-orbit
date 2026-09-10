@@ -70,5 +70,35 @@
     "seconds": 2,
     "prompt": "A bright clear bell strike, energetic go signal with a shimmering tail",
     "event": "go"
+  },
+  {
+    "name": "ambience-hearth",
+    "seconds": 12,
+    "prompt": "Quiet crackling hearth fire inside a wooden hall, soft embers popping, low warm room tone, gentle and continuous with no sudden events",
+    "event": "ambience-hearth"
+  },
+  {
+    "name": "ambience-wind",
+    "seconds": 12,
+    "prompt": "Low steady wind moaning through a dark stone forge at night, a faint distant metal creak, continuous and calm with no sudden events",
+    "event": "ambience-wind"
+  },
+  {
+    "name": "ambience-chimes",
+    "seconds": 12,
+    "prompt": "Soft distant wind chimes and a gentle breeze moving through a mountain shrine garden, sparse and calm, continuous",
+    "event": "ambience-chimes"
+  },
+  {
+    "name": "achievement-chime",
+    "seconds": 2,
+    "prompt": "A sparkling ascending celesta and glass bell flourish, bright and rewarding, short",
+    "event": "achievement"
+  },
+  {
+    "name": "combo-chime",
+    "seconds": 1,
+    "prompt": "A quick bright rising two-note metallic ping, a small triumphant accent, very short",
+    "event": "combo"
   }
 ]

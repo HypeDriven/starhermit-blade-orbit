@@ -254,6 +254,7 @@ class Game {
     for (const ev of events) {
       if (ev.type === 'embed') {
         this.audio.event('embed', { combo: ev.combo });
+        if (ev.combo >= 3) this.audio.event('combo', { combo: ev.combo });
         this.ui.announce(`Embedded. ${ev.precision} precision points${ev.combo > 1 ? `, combo x${ev.combo}` : ''}.`);
       } else if (ev.type === 'miss') {
         this.audio.event(ev.blockedBy === 'hit-marker' ? 'miss-marker' : 'miss-blade');
@@ -320,6 +321,7 @@ class Game {
       });
     }
 
+    if (achievements.length) this.audio.event('achievement');
     this.ui.showResults(report, { achievements, isBest, nextStage, best });
     this.ui.updateTitle(this.progression, false);
   }

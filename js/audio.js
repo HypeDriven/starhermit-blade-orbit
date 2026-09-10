@@ -24,6 +24,15 @@ const SFX_SAMPLES = {
   hint: 'ui-hint',
   tick: 'countdown-tick',
   go: 'countdown-go',
+  achievement: 'achievement-chime',
+  combo: 'combo-chime',
+};
+
+/** Theme ambience kind → authored loop (sfx/<name>.opus); the synth bed plays until it decodes. */
+const AMBIENCE_SAMPLES = {
+  hearth: 'ambience-hearth',
+  wind: 'ambience-wind',
+  chimes: 'ambience-chimes',
 };
 
 export class AudioEngine {
@@ -234,6 +243,13 @@ export class AudioEngine {
       case 'go':
         this.playTone({ t0, freq: 1320, dur: 0.18, peak: 0.2, type: 'sine' });
         break;
+      case 'achievement':
+        [784, 988, 1175, 1568].forEach((f, i) => this.playTone({ t0: t0 + i * 0.09, freq: f, dur: 0.3, peak: 0.12, type: 'triangle' }));
+        break;
+      case 'combo':
+        this.playTone({ t0, freq: 1046, dur: 0.08, peak: 0.1, type: 'triangle' });
+        this.playTone({ t0: t0 + 0.07, freq: 1568, dur: 0.12, peak: 0.1, type: 'triangle' });
+        break;
       default:
         break;
     }
@@ -250,6 +266,8 @@ export class AudioEngine {
       lose: 'Stage failed tone',
       tick: 'Countdown tick',
       go: 'Go signal',
+      achievement: 'Achievement unlocked',
+      combo: 'Combo chime',
     };
     if (captions[type]) this.caption(captions[type]);
   }
@@ -276,12 +294,35 @@ export class AudioEngine {
     lfoGain.gain.value = kind === 'wind' ? 260 : 60;
     lfo.connect(lfoGain); lfoGain.connect(filt.frequency);
     lfo.start();
-    this.ambienceNodes = { src, lfo, g };
+    const nodes = { src, lfo, g, loop: null, loopGain: null };
+    this.ambienceNodes = nodes;
+
+    // Authored loop: cross-fade in over the synth bed once decoded; the bed
+    // stays as the fallback when the clip is missing or fails to decode.
+    const sampleName = AMBIENCE_SAMPLES[kind];
+    if (!sampleName) return;
+    // loadSample returns the cached AudioBuffer (or null) once resolved, so wrap it.
+    Promise.resolve(this.loadSample(sampleName)).then((buf) => {
+      if (!buf || this.ambienceNodes !== nodes || !this.ctx) return;
+      const loop = this.ctx.createBufferSource();
+      loop.buffer = buf;
+      loop.loop = true;
+      const loopGain = this.ctx.createGain();
+      const t = this.ctx.currentTime;
+      loopGain.gain.setValueAtTime(0.0001, t);
+      loopGain.gain.exponentialRampToValueAtTime(0.6, t + 1.5);
+      g.gain.setValueAtTime(g.gain.value, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+      loop.connect(loopGain); loopGain.connect(this.buses.ambience);
+      loop.start();
+      nodes.loop = loop; nodes.loopGain = loopGain;
+    });
   }
 
   stopAmbience() {
     if (!this.ambienceNodes) return;
-    try { this.ambienceNodes.src.stop(); this.ambienceNodes.lfo.stop(); } catch { /* already stopped */ }
+    const n = this.ambienceNodes;
+    try { n.src.stop(); n.lfo.stop(); n.loop?.stop(); } catch { /* already stopped */ }
     this.ambienceNodes = null;
   }
 
