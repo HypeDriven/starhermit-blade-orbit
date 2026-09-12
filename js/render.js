@@ -419,6 +419,13 @@ class BladeRenderer {
 
     // camera: intro swoop (interruptible ease, not cumulative lerp) + decaying shake
     const camPos = FRAMING.cameraPos.clone();
+    const look = FRAMING.cameraLook.clone();
+    if (this.framingDist) {
+      const dir = camPos.clone().sub(FRAMING.cameraLook).normalize();
+      look.y = this.framingLookY;
+      look.x = this.framingLookX || 0;
+      camPos.copy(look).addScaledVector(dir, this.framingDist);
+    }
     if (this.swoop.active && this.swoop.t < 1) {
       this.swoop.t = Math.min(1, this.swoop.t + dt / FRAMING.introSwoopSeconds);
       const e = 1 - Math.pow(1 - this.swoop.t, 3);
@@ -432,7 +439,7 @@ class BladeRenderer {
       camPos.y += Math.cos(this.shake.t * 53) * this.shake.amp * decay;
     } else this.shake.amp = 0;
     this.camera.position.copy(camPos);
-    this.camera.lookAt(FRAMING.cameraLook);
+    this.camera.lookAt(look);
 
     this.renderer.render(this.scene, this.camera);
 
@@ -471,6 +478,46 @@ class BladeRenderer {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.fitFraming(w, h);
+  }
+
+  /** Pull the camera back so the wheel (plus a margin) fits both axes with HUD
+   *  space reserved above and below; wide viewports keep the authored distance. */
+  fitFraming(w, h) {
+    const R = FRAMING.wheelRadius * 1.3;
+    const halfFov = THREE.MathUtils.degToRad(FRAMING.fov / 2);
+    // Measure the HUD bands actually overlaying the canvas (top stats, bottom
+    // throw controls); side-docked controls in short landscape narrow the width.
+    let hudTop = 0, hudBottom = 0, sideL = 0, sideR = 0;
+    const cr = this.canvas.getBoundingClientRect();
+    const band = (id) => {
+      const el = document.getElementById(id);
+      if (!el || el.hidden || !el.offsetParent) return null;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      return { t: r.top - cr.top, b: r.bottom - cr.top, l: r.left - cr.left, r: r.right - cr.left };
+    };
+    const top = band('hud-top'); if (top && top.b < h * 0.4) hudTop = top.b / h;
+    for (const id of ['hud-actions', 'hint-line']) {
+      const a = band(id); if (!a) continue;
+      if (a.t > h * 0.55 && a.r - a.l > w * 0.5) hudBottom = Math.max(hudBottom, (h - a.t) / h);
+      else if (a.l > w * 0.6) sideR = Math.max(sideR, (w - a.l) / w);
+      else if (a.r < w * 0.4) sideL = Math.max(sideL, a.r / w);
+    }
+    const tut = band('tutorial-banner');
+    if (tut && tut.r < w * 0.45) sideL = Math.max(sideL, tut.r / w);
+    if (!top) hudTop = Math.min(0.2, 60 / h);
+    if (!hudBottom && !sideR) hudBottom = Math.min(0.3, 110 / h);
+    const vFree = Math.max(0.35, 1 - hudTop - hudBottom - 0.04);
+    const hFree = Math.max(0.4, 1 - sideL - sideR - 0.04);
+    const vDist = R / (Math.tan(halfFov) * vFree);
+    const hDist = R / (Math.tan(halfFov) * (w / h) * hFree);
+    const authored = FRAMING.cameraPos.distanceTo(FRAMING.cameraLook);
+    const dist = Math.max(authored, vDist, hDist);
+    this.framingDist = dist;
+    // Look point shifts so the wheel sits centred in the HUD-free band.
+    this.framingLookY = FRAMING.cameraLook.y - (hudBottom - hudTop) * dist * Math.tan(halfFov);
+    this.framingLookX = (sideR - sideL) * dist * Math.tan(halfFov) * (w / h);
   }
 
   /** Project a world position to CSS pixels (shared layout model for DOM labels). */

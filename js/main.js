@@ -407,6 +407,12 @@ class Game {
     window.addEventListener('orientationchange', () => setTimeout(() => this.renderer?.resize(), 60));
     // react to any layout change (rails, drawers, safe areas, zoom) without losing input
     new ResizeObserver(() => this.renderer?.resize()).observe(document.getElementById('playfield-wrap'));
+    // HUD bands appear/disappear without a resize; re-fit the wheel when they do.
+    const hudObserver = new MutationObserver(() => this.renderer?.resize());
+    for (const id of ['hud', 'hud-actions', 'tutorial-banner', 'btn-hint', 'btn-undo']) {
+      const el = document.getElementById(id);
+      if (el) hudObserver.observe(el, { attributes: true, attributeFilter: ['hidden', 'class', 'style'] });
+    }
   }
 
   pollGamepad() {

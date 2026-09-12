@@ -135,6 +135,19 @@ button, input, select { font: inherit; }
   #rail-left { display: block; padding: 0.5rem; font-size: 0.85rem; grid-column: 1; width: 150px; }
   #rail-left[hidden] { display: none !important; }
   #playfield-wrap { grid-column: 2; }
+  /* Controls and guidance sit beside the wheel, never over it. */
+  #hud { justify-content: flex-start; }
+  #hud-actions {
+    position: absolute; right: calc(0.6rem + var(--sar)); top: 50%; transform: translateY(-50%);
+    flex-direction: column; align-items: stretch; margin: 0; padding: 0; gap: 0.5rem;
+  }
+  body[data-left-handed="true"] #hud-actions { flex-direction: column; right: auto; left: calc(0.6rem + var(--sal)); }
+  .btn-throw { font-size: 1.1rem; padding: 0.7rem 1.4rem; }
+  #hint-line.hint-line { position: absolute; left: calc(0.75rem + var(--sal)); bottom: calc(0.4rem + var(--sab)); margin: 0; max-width: 32vw; text-align: left; }
+  #tutorial-banner.tutorial-banner {
+    left: calc(0.6rem + var(--sal)); top: calc(3.6rem + var(--sat)); transform: none;
+    max-width: 30vw; padding: 0.5rem 0.7rem; font-size: 0.9rem; text-align: left;
+  }
 }
 
 /* ---------- HUD ---------- */
