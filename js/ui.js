@@ -11,7 +11,7 @@ import { SIM_FPS } from './rules.js';
 
 const $ = (id) => document.getElementById(id);
 
-const SCREENS = ['title', 'modes', 'journey', 'setup', 'results', 'pause', 'help', 'settings'];
+const SCREENS = ['title', 'modes', 'journey', 'setup', 'results', 'pause', 'help', 'settings', 'leaderboard'];
 
 export function createUI(handlers) {
   return new UI(handlers);
@@ -34,6 +34,8 @@ class UI {
     on('btn-play', () => this.h.action('play'));
     on('btn-resume', () => this.h.action('resume-snapshot'));
     on('btn-daily', () => this.h.action('daily'));
+    on('btn-leaderboard', () => this.h.action('leaderboard'));
+    on('btn-leaderboard-back', () => this.showScreen('title'));
     on('btn-journey', () => this.showScreen('journey'));
     on('btn-tutorial', () => this.h.action('tutorial'));
     on('btn-modes-back', () => this.showScreen('title'));
@@ -399,6 +401,38 @@ class UI {
 
   setServerClock(text) { $('server-clock').textContent = text; }
   setProfileChip(name) { $('profile-chip').textContent = name; }
+
+  // Platform leaderboard panel. entries: [{ rank, name, score }] with names
+  // already resolved to profile nicknames; `note` covers loading/empty/
+  // offline states.
+  renderLeaderboard(entries, note) {
+    const body = $('leaderboard-body');
+    body.innerHTML = '';
+    if (note) {
+      const p = document.createElement('p');
+      p.className = 'panel-sub';
+      p.textContent = note;
+      body.appendChild(p);
+    }
+    if (entries && entries.length) {
+      const table = document.createElement('table');
+      table.className = 'results-table';
+      const tbody = document.createElement('tbody');
+      entries.forEach((e) => {
+        const tr = document.createElement('tr');
+        const rank = document.createElement('td');
+        rank.textContent = e.rank != null ? '#' + e.rank : '—';
+        const name = document.createElement('td');
+        name.textContent = e.name;
+        const score = document.createElement('td');
+        score.textContent = String(e.score);
+        tr.appendChild(rank); tr.appendChild(name); tr.appendChild(score);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      body.appendChild(table);
+    }
+  }
 }
 
 function totalOf(state) {

@@ -320,13 +320,15 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=serv
 
 | Feature | Status |
 |---|---|
-| Launch token | `Platform.init` reads `launch_token` from the query string and keeps only the scope in memory; nothing is persisted |
+| Launch token | `Platform.init` reads `#game_token=<jwt>` from the URL fragment (optional `&session_id=`, stripped after the read; query `?launch_token=` kept for local dev), decodes `sub` + `game_scope` (never hard-coded), sends it as `Authorization: Bearer` on every `/api` call, and re-mints it every 45 min via `POST /api/v1/games/{slug}/launch-token` (60 s retry on failure). Memory only; nothing is persisted |
+| Identity | The top-bar chip shows the profile nickname from `GET /api/v1/users/{sub}/profile` (never `/api/v1/me`, never usernames; `Player <id8>` fallback); "Guest" remains the offline label |
+| Platform leaderboard | Read-only via `GET /api/v1/games/{slug}` → `leaderboardId` → `GET /api/v1/leaderboards/{leaderboardId}/entries?page=&pageSize=`, with user ids resolved to nicknames through the profile helper; shown on the title-screen Leaderboards panel. Clients never submit to game leaderboards (wiki); no `leaderboardId` or no token → panel says boards are unavailable |
 | Server time | `GET /api/v1/time` with round-trip-adjusted offset; drives the top-bar clock and the daily seed |
 | Daily board | `POST /api/v1/scores` with the replay envelope; the server regenerates today's content, requires the submitted content to be canonically identical, re-runs `verifyReplay`, rejects implausible losing totals, ranks with `compareResults`, dedupes by session id. `GET /api/v1/scores/:id` returns the top 50 |
 | Presence | `POST /api/v1/presence` every 45 s while a round is live |
 | Telemetry | `POST /api/v1/telemetry` for whitelisted events (start, tutorial_step, round_end, retry, settings_change, error) with short string fields only |
 | Offline | Every hosted call degrades to a local no-op; scores are kept locally and labelled casual |
-| Not used | Identity/profile (chip always reads "Guest"), friends filtering, cloud saves, platform achievements, rooms, WebSocket, chat, voice |
+| Not used | Friends filtering, cloud saves, platform achievements, rooms, WebSocket, chat, voice |
 
 ## 13. Technical architecture
 
@@ -383,9 +385,9 @@ banners, help cards) before the first mechanic; `node --check` clean on all JS; 
 ## 16. Known limitations
 
 - No localization layer; English literals throughout (section 10).
-- The daily leaderboard is submitted to but never displayed: `Platform.fetchLeaderboard` exists and the server serves
-  `GET /api/v1/scores/:id`, but no screen lists entries or the player's rank.
-- Profile identity is not read; the top-bar chip always says "Guest".
+- The platform leaderboard shows the ranked top 20 on the title-screen panel, but the player's own rank is not
+  highlighted there and the daily board on the results screen still only announces submission success or failure.
+- Offline play shows "Guest" in the top-bar chip; the account nickname appears only when launched with a token.
 - "Hold-to-preview reticle" and "Timing assist reticle" are two settings with the same effect.
 - The voice bus has a slider but no content plays through it.
 - Audio is unverified in automation (headless Chrome has no output device); only construction is exercised.
@@ -398,7 +400,7 @@ banners, help cards) before the first mechanic; `node --check` clean on all JS; 
 ## Design intent not yet implemented
 
 1. Ship string tables and a locale selector for en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT.
-2. Show the daily board (global top 50 and the player's rank) on the results screen and the briefing.
+2. Show the daily board (global top 50 and the player's rank) on the results screen and the briefing, and highlight the player's own row on the platform leaderboard panel.
 3. Load `assets/throwing-knife.glb` for the standby and embedded blades with the procedural mesh as fallback.
-4. Read the platform profile for the chip and label ranked submissions with the display name.
+4. Label ranked submissions with the display name server-side and add a friends-only filter to the leaderboard panel.
 5. Give the two reticle settings distinct behaviour (hold-to-preview only while the pointer is down).

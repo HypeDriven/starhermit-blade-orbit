@@ -68,6 +68,10 @@ class Game {
     this.ui.applySettingsToDom(this.settings);
     this.ui.buildHelp();
     this.ui.setProfileChip('Guest');
+    // Hosted: the account nickname replaces the guest chip when it resolves.
+    this.platform.fetchProfile().then((p) => {
+      if (p) this.ui.setProfileChip(p.displayName);
+    });
 
     // clock display (platform-synchronized where hosted)
     setInterval(() => {
@@ -446,6 +450,19 @@ class Game {
         break;
       }
       case 'daily': this.prepareContent(this.daily, { ranked: true }); break;
+      case 'leaderboard': {
+        this.ui.showScreen('leaderboard');
+        this.ui.renderLeaderboard(null, 'Loading…');
+        this.platform.fetchLeaderboard().then((res) => {
+          if (res.ok) this.ui.renderLeaderboard(res.entries, '');
+          else {
+            this.ui.renderLeaderboard([], this.platform.tokenHosted
+              ? 'Leaderboards are not available for this game yet.'
+              : 'Leaderboards are only available when the game is launched from the platform.');
+          }
+        });
+        break;
+      }
       case 'tutorial': this.showTutorialPick(); break;
       case 'setup-start': if (this.pendingContent) this.startSession(this.pendingContent); break;
       case 'setup-back': this.ui.showScreen('title'); break;
