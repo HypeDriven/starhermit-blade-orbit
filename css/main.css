@@ -370,6 +370,24 @@ body[data-contrast="high"] #screen-title { background: #000000e6; }
 .settings-body select { background: var(--panel-2); color: var(--ink); border: 1px solid #00000066; border-radius: 6px; padding: 0.3rem 0.5rem; min-height: 36px; }
 .fine-print { color: var(--ink-dim); font-size: 0.8rem; }
 
+/* Graphics section: spans the settings grid; its controls flow in their own columns. */
+.settings-body .gfx-section { grid-column: 1 / -1; }
+.gfx-grid { display: grid; column-gap: 1.6rem; grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr)); }
+.gfx-grid label { flex-wrap: wrap; row-gap: 0.3rem; }
+.gfx-grid label > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+/* Selects keep room for "From preset (…)"; on narrow panels they wrap under their label. */
+.gfx-grid select { flex: 1 1 14rem; max-width: 100%; }
+.gfx-range { display: flex; align-items: center; gap: 0.5rem; flex: 1; justify-content: flex-end; }
+.gfx-range output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.gfx-summary { margin-top: 0.4rem; overflow-wrap: anywhere; }
+.gfx-note { color: var(--accent-2); }
+.fps-meter {
+  position: fixed; left: calc(0.5rem + var(--sal)); bottom: calc(0.5rem + var(--sab)); z-index: 50;
+  padding: 0.15rem 0.45rem; border-radius: 6px; background: #000000b0; color: #e8ffe8;
+  font: 600 0.75rem/1.3 ui-monospace, monospace; pointer-events: none;
+}
+.fps-meter[hidden] { display: none; }
+
 .controls-list { line-height: 1.9; }
 .controls-list kbd {
   background: var(--panel-2); border: 1px solid #00000088; border-bottom-width: 3px;

@@ -8,6 +8,8 @@
 import { THEMES } from './content.js';
 import { ACHIEVEMENTS } from './session.js';
 import { SIM_FPS } from './rules.js';
+import { CATEGORIES, PRESETS, presetTier, normalizePreset } from './gfx.js';
+import { gfxText, pickLocale } from './gfx-i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -53,6 +55,7 @@ class UI {
     on('btn-leave', () => this.h.action('leave'));
     on('btn-help-top', () => this.showOverlay('help'));
     on('btn-settings-top', () => this.showOverlay('settings'));
+    on('btn-title-settings', () => this.showOverlay('settings'));
     on('btn-help-back', () => this.closeOverlay());
     on('btn-settings-back', () => { this.h.action('settings-closed'); this.closeOverlay(); });
     on('btn-throw', () => this.h.action('throw'));
@@ -89,7 +92,7 @@ class UI {
     bindRange('set-ambience', 'ambience');
     bindRange('set-voice', 'voice');
     bindCheck('set-captions', 'captions');
-    bindSelect('set-quality', 'quality');
+    this.bindGraphics();
     bindCheck('set-reduced-motion', 'reducedMotion');
     bindCheck('set-high-contrast', 'highContrast');
     bindSelect('set-palette', 'palette');
@@ -98,6 +101,83 @@ class UI {
     bindCheck('set-hold-aim', 'holdToAim');
     bindCheck('set-timing-assist', 'timingAssist');
     bindCheck('set-haptics', 'haptics');
+  }
+
+  // --- graphics settings ----------------------------------------------------
+
+  /** Build and wire the Graphics section (preset, render scale, per-category overrides, toggles). */
+  bindGraphics() {
+    const langs = navigator.languages?.length ? navigator.languages : [navigator.language];
+    const t = (this.gfxT = gfxText(pickLocale(langs)));
+    $('gfx-section').lang = t.locale;
+    for (const el of document.querySelectorAll('#gfx-section [data-gfx-text]')) el.textContent = t(el.dataset.gfxText);
+
+    const host = $('gfx-categories');
+    host.textContent = '';
+    for (const [cat, tiers] of Object.entries(CATEGORIES)) {
+      const label = document.createElement('label');
+      const name = document.createElement('span');
+      name.textContent = t(cat);
+      const sel = document.createElement('select');
+      sel.id = `gfx-${cat}`;
+      sel.dataset.gfxCat = cat;
+      for (const v of ['preset', ...tiers]) {
+        const o = document.createElement('option');
+        o.value = v;
+        o.textContent = v === 'preset' ? t('fromPreset', { tier: '' }) : t(v);
+        sel.append(o);
+      }
+      sel.addEventListener('change', () => {
+        const g = { ...(this.h.getSettings().graphics || {}) };
+        if (sel.value === 'preset') delete g[cat];
+        else g[cat] = sel.value;
+        this.h.settingChanged('graphics', g);
+      });
+      label.append(name, sel);
+      host.append(label);
+    }
+
+    $('set-quality').addEventListener('change', (e) => this.h.settingChanged('quality', e.target.value));
+    const scale = $('gfx-render-scale');
+    scale.addEventListener('input', () => {
+      $('gfx-render-scale-value').textContent = `${scale.value}%`;
+      this.h.settingChanged('graphics', { ...(this.h.getSettings().graphics || {}), render_scale: Number(scale.value) / 100 });
+    });
+    for (const [id, key] of [['gfx-adaptive', 'adaptive'], ['gfx-show-fps', 'show_fps']]) {
+      $(id).addEventListener('change', (e) => {
+        this.h.settingChanged('graphics', { ...(this.h.getSettings().graphics || {}), [key]: e.target.checked });
+      });
+    }
+    this.refreshGraphics();
+  }
+
+  /** Reflect saved graphics settings and the renderer's live info into the controls. */
+  refreshGraphics() {
+    const t = this.gfxT;
+    if (!t) return;
+    const s = this.h.getSettings();
+    const g = s.graphics || {};
+    const info = this.h.graphicsInfo?.(t.words) || null;
+    const detected = info?.detected || 'balanced';
+    const preset = normalizePreset(s.quality);
+    const active = PRESETS.includes(preset) ? preset : detected;
+    const q = $('set-quality');
+    q.value = preset;
+    for (const o of q.options) o.textContent = o.value === 'auto' ? t('auto', { tier: t(detected) }) : t(o.value);
+    for (const cat of Object.keys(CATEGORIES)) {
+      const sel = $(`gfx-${cat}`);
+      sel.value = CATEGORIES[cat].includes(g[cat]) ? g[cat] : 'preset';
+      sel.options[0].textContent = t('fromPreset', { tier: t(presetTier(active, cat)) });
+    }
+    const pct = Math.round(Math.min(2, Math.max(0.5, Number(g.render_scale) || 1)) * 100);
+    $('gfx-render-scale').value = String(pct);
+    $('gfx-render-scale-value').textContent = `${pct}%`;
+    $('gfx-adaptive').checked = g.adaptive !== false;
+    $('gfx-show-fps').checked = !!g.show_fps;
+    $('gfx-summary').textContent = info ? `${info.gpu || t('unknownGpu')} · ${info.summary}` : '';
+    $('gfx-post-note').hidden = !info?.postFailed;
+    $('gfx-post-note').textContent = t('postFailed');
+    document.body.dataset.gfxPreset = info?.resolved?.preset || active;
   }
 
   applySettingsToDom(s) {
@@ -118,6 +198,7 @@ class UI {
     $('rail-left').hidden = !playing;
     $('rail-right').hidden = !playing;
     this.focusFirst(name ? `screen-${name}` : 'btn-throw');
+    if (name === 'settings') this.refreshGraphics();
     if (name === 'title') this.h.action('title-shown');
   }
 

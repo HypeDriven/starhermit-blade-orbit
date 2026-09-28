@@ -14,28 +14,31 @@ listed once, at the end, under "Design intent not yet implemented".
 | Players | 1, with asynchronous ranked comparison on the daily board |
 | Session | 20-90 s per stage; a Journey sitting is 5-10 min; a Daily is one attempt of about a minute |
 | Platforms | Desktop and mobile browsers (portrait and landscape), keyboard, mouse, touch, gamepad |
-| Rendering | Three.js (`vendor/three.module.js`) WebGL scene under a semantic HTML shell; the HTML is fully usable without the canvas |
+| Rendering | Three.js r160 (`vendor/three.module.js`, post-processing addons in `vendor/addons/`) WebGL scene under a semantic HTML shell; the HTML is fully usable without the canvas |
 | Hosting | Static distribution plus an optional authoritative Node script (`server.js`) for the daily board |
 
 ### File map
 
 | Path | Owns |
 |---|---|
-| `index.html` | DOM shell: top bar, playfield with canvas + HUD, eight screens, live regions, settings form |
+| `index.html` | DOM shell: top bar, playfield with canvas + HUD, eight screens, live regions, settings form; importmap maps `three` and `three/addons/` |
 | `css/main.css` | Palette tokens, responsive layouts (wide, compact, portrait, landscape), reduced-motion and contrast variants |
-| `js/main.js` | `Game` class: phase machine, fixed-step loop, input routing, progression, results, settings, quality fallback |
+| `js/main.js` | `Game` class: phase machine, fixed-step loop, input routing, progression, results, settings, graphics settings hand-off |
 | `js/rules.js` | Pure deterministic rules engine: rotation math, legality, `previewThrow`, `applyCommand`, scoring, hashes, serialization |
 | `js/content.js` | Themes, stage generator, 40 Journey stages, 4 tutorials, daily seed, practice, 4 challenges, validators |
 | `js/session.js` | `Session` (commands, undo, replay envelope, snapshots), `verifyReplay`, `store` (localStorage), achievements |
-| `js/render.js` | Three.js stage: procedural wheel, blades, sigils, particles, camera, quality tiers |
-| `js/ui.js` | Screens, HUD, setup/results rendering, help cards, settings binding, accessibility mirrors |
+| `js/render.js` | Three.js stage: procedural wheel, blades, sigils, particles, embers, camera; graphics settings (`setGraphics`, `graphicsInfo`), post chain, adaptive resolution |
+| `js/gfx.js` | Pure graphics quality model: presets, categories, GPU detection, `resolve`, `presetTier`, `choosePreset`, `describe` |
+| `js/gfx-i18n.js` | Graphics-section strings in nine locales, `pickLocale`, `gfxText` |
+| `js/ui.js` | Screens, HUD, setup/results rendering, help cards, settings binding (including the Graphics section), accessibility mirrors |
 | `js/audio.js` | WebAudio buses, authored Opus samples with synth fallback, ambience loops, generative music, captions |
 | `js/platform.js` | StarHermit adapter: time sync, score submission, presence, telemetry; offline no-ops |
 | `server.js` | Static server + `/api/v1/*`: time, daily id, replay-validated daily leaderboard, presence, telemetry sink |
 | `sfx/` | 17 Opus clips, `manifest.txt` (canonical), `manifest.json` (generator input), `manifest.md` (generator output) |
 | `assets/` | `title-backdrop.webp` (title key art), `throwing-knife.glb` (hero prop model, not yet wired) |
 | `coverart.png`, `icon.png`, `favicon.svg` | Store cover (1200x675), 256 px icon, tab icon |
-| `tests/rules.test.mjs`, `tests/e2e.mjs`, `tests/shot-late-tier.mjs` | 19 unit tests, 13-step browser playthrough, a screenshot helper |
+| `vendor/addons/` | three.js 0.160.1 `examples/jsm` files: EffectComposer, RenderPass, ShaderPass, OutputPass, GTAOPass, UnrealBloomPass, SMAAPass, FXAA and their shaders, RoomEnvironment |
+| `tests/rules.test.mjs`, `tests/gfx.test.mjs`, `tests/e2e.mjs`, `tests/shot-late-tier.mjs` | 19 rules tests, 10 graphics-model tests, 15-step browser playthrough, a screenshot helper |
 | `starhermit.txt`, `package.json`, `LICENSE.md`, `knownissues.md` | Platform manifest, scripts, PolyForm Noncommercial 1.0.0, review log |
 | `data/` | Runtime leaderboard store written by `server.js` (`scores.json`); git-ignored, never served |
 
@@ -210,7 +213,8 @@ Help and Settings are overlays: opened from the top bar during a live round they
 on Back; from the pause panel they return to the pause panel.
 
 - **Title**: key art backdrop (`assets/title-backdrop.webp`) under a dark scrim, Play (primary), Resume paused round
-  (only when a snapshot for a rebuildable stage exists), Daily Challenge, Journey, Learn to Play, progress line.
+  (only when a snapshot for a rebuildable stage exists), Daily Challenge, Leaderboards, Journey, Learn to Play, Settings (the title screen covers the top bar, so
+  the menu carries its own Settings button), progress line.
 - **Modes**: card grid (name, description, ranked/casual meta); the same screen lists practice difficulties, challenges
   and lessons.
 - **Journey**: 40 square cells, locked ones dimmed and disabled, stars shown, mastery cells outlined in accent.
@@ -220,8 +224,8 @@ on Back; from the pause panel they return to the pause panel.
 - **Pause**: Resume first, then Settings, Help, Restart stage, Leave round (danger colour).
 - **Results**: headline (Wheel Cleared! / Out of Misses / Sigil Struck / Time Expired), five-row breakdown plus total,
   time and throw count, achievement chips, personal-best line, Menu / Retry / Next stage.
-- **Help**: six rule cards and the control list. **Settings**: audio sliders, captions, quality, reduced motion, high
-  contrast, palette, text size, left-handed, reticle assists, haptics, replay tutorials, reset progress.
+- **Help**: six rule cards and the control list. **Settings**: audio sliders, captions, a Graphics section (below), reduced motion,
+  high contrast, palette, text size, left-handed, reticle assists, haptics, replay tutorials, reset progress.
 
 Layouts (`css/main.css`): >= 1024 px shows a 240 px objective rail left and an actions/status rail right of the
 playfield; below that the rails collapse; landscape phones (height <= 500) keep a 150 px status rail; portrait phones
@@ -243,10 +247,11 @@ key and fill light colours.
 
 **Hero**: the wheel. `FRAMING` in `js/render.js`: camera at (0, 0.55, 6.4) looking at (0, 0.1, 0), fov 34, wheel
 radius 1.5, blade orbit radius 1.08, throw origin (0, -2.6, 2.2), contact notch at -pi/2 (six o'clock). The face is a
-seeded 512 px canvas texture (growth rings, radial grain, carved notches, vignette) under a brass torus rim with 12
-instanced rivets, a hub, a thick edge and a stand; two carved posts flank the stage and up to six seeded crates dress the
-floor on medium/high tiers. Blades are a tapered steel box, cylinder grip and brass guard (tip toward the hub, slight
-tilt); sigils are emissive hexagons with a halo ring, so hazards differ by shape as well as colour.
+seeded canvas texture (growth rings, radial grain, carved notches, vignette; 1024 px with fine fibre scratches at
+Detailed) in a varnished clearcoat material under a brass torus rim with 12 instanced rivets, a domed hub, a thick edge
+and a stand; two carved posts with brass caps flank the stage. Blades are a bevelled, pointed steel extrusion with a
+clearcoat, cylinder grip, brass guard and pommel (slight tilt); sigils are emissive hexagons with an over-bright halo
+ring, so hazards differ by shape as well as colour and glow when bloom is on.
 
 **Shape and type**: rounded 12 px panels, pill THROW button, serif-leaning UI face ("Iowan Old Style", Segoe UI,
 system-ui) with tracked uppercase labels.
@@ -255,8 +260,33 @@ system-ui) with tracked uppercase labels.
 chips + 0.012 shake; miss: 22-30 sparks in accent or sigil colour + 0.03 shake; win: five 26-spark bursts; lose: 0.045
 shake), particles from a seeded pool (80/160/260 by tier) that never raycast. Reduced motion removes shake and the
 swoop, shortens blade flight to 20 ms, slows particles to 40 %, shortens countdown steps to 500 ms and the results delay
-to 250 ms, and disables CSS transitions. Quality tiers set DPR cap (1 / 1.5 / 2), shadows, particle count and scenery
-density; Auto picks by device memory and user agent and drops a tier after three 2 s windows under 42 fps.
+to 250 ms, and disables CSS transitions. Ambient motion (drifting embers, accent-light shimmer) stops under reduced
+motion.
+
+**Graphics.** The renderer uses ACES filmic tone mapping with sRGB output, a hemisphere fill, a warm key directional
+light whose PCF-soft shadow frustum is fitted to the wheel, stand and posts, a cool rim light from behind, and a
+flickering accent point light. Optional effects: key-light shadows (blades, rim, hub, posts and stand cast onto the
+wheel face and floor), image-based reflections from a PMREM-filtered `RoomEnvironment` (per-material
+`envMapIntensity`, strongest on steel), GTAO ambient occlusion, bloom limited to highlights (threshold 0.9: sigil halos,
+hot sparks, bright steel), a colour grade after tone mapping (gentle S-curve, +8 % saturation, warm highlights / cool
+shadows, vignette), FXAA/SMAA/MSAA anti-aliasing, particles (burst pool of 80 or 260 plus 70 slow additive embers
+drifting behind the wheel plane at High) and surface detail (Detailed: 1024 px wood with the grain as a bump map, worn
+stage-board floor, an overhead spot that pools light on the wheel, brass post bands and seeded crates; Plain: flat floor,
+512 px wood). The Settings panel's **Graphics** section (`#gfx-section`) offers Quality (`#set-quality`: Auto (detected:
+<tier>), chosen from the WebGL unmasked renderer string where software renderers get Low, discrete GPUs and Apple M get
+High and the rest Balanced, capped at Balanced on touch devices; Low; Balanced; High; Ultra), Render scale
+(`#gfx-render-scale`, 50-200 %), one select per category (`#gfx-shadows`, `#gfx-ao`, `#gfx-bloom`, `#gfx-grade`,
+`#gfx-antialias`, `#gfx-reflections`, `#gfx-particles`, `#gfx-detail`; default "From preset (<tier>)"), Adaptive resolution
+(`#gfx-adaptive`, on by default: over ~90-frame windows the scale steps down 0.1 to a 0.6 floor when frames average over
+26 ms and back up 0.05 when under 14 ms) and Show frame rate (`#gfx-show-fps`, a corner `fps · ratio` readout), plus a
+summary line "GPU · cost · W×H px". Pixel ratio = min(devicePixelRatio, preset cap 1/1.5/2/2) × preset scale (1.25 at
+Ultra) × render scale × adaptive scale. Low renders directly with canvas MSAA and no post chain, like the old low tier;
+other presets run EffectComposer (RenderPass → GTAO → UnrealBloom → OutputPass → grade → SMAA/FXAA, HalfFloat target
+with 4× MSAA for MSAA). Choosing a preset clears overrides; every change applies immediately (shadow maps, environment,
+material recompiles, post rebuild, scenery rebuild for detail) and is saved in `blade-orbit:settings` (`quality` holds
+the preset, `graphics` holds overrides, scale and toggles; a legacy `medium` reads as Balanced). If the post chain
+fails the game renders without it and the section shows a note. The canvas and body carry `data-gfx-preset`. The
+section's strings come from `js/gfx-i18n.js` in the nine target locales, picked from the browser language.
 
 **Visual assets the design calls for**: store cover (`coverart.png`), title backdrop (`assets/title-backdrop.webp`), a
 hero throwing-knife model (`assets/throwing-knife.glb`), icon and favicon. See section 15.
@@ -304,7 +334,7 @@ tabular numerals in the HUD), so the missing piece is the string table and selec
 
 - Keyboard-only path: skip link, Tab order through every screen, focus moved to the first enabled button of each screen
   (`focusFirst`) and to THROW when play starts; `:focus-visible` outline in `#6ab8ff`; Esc backs out of screens.
-- Announcements: `#live-region` (polite) for objective, embeds, hints, resume, quality drops; `#alert-region` (assertive)
+- Announcements: `#live-region` (polite) for objective, embeds, hints, resume; `#alert-region` (assertive)
   for misses and rejected throws; `#board-mirror` summarises blades, sigils, goal and misses after every command; the
   countdown is `aria-live="assertive"`; the canvas is `aria-hidden`.
 - Captions for every sound cue; four independent volume sliders.
@@ -343,11 +373,12 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=serv
   context loss rebuilds the scene from retained content; missing WebGL shows `#canvas-fallback`.
 - Persistence (`store`, localStorage): `blade-orbit:settings`, `:progression`, `:scores`, `:achievements`, `:snapshot`
   (paused round), `:replay:<contentId>:<sessionId>`. Snapshots are only offered when the stage can be rebuilt.
-- Budgets: 60 fps target, low tier for mobile (DPR 1, no shadows, 80 particles). The base stage is about 20 draw calls
+- Budgets: 60 fps target; Low (Auto on software GPUs) is DPR 1, no shadows, no post chain, 80 particles. The base stage is about 20 draw calls
   plus three per blade and two per sigil; particles are individual meshes, so a win burst briefly adds up to 130.
 - `tests/e2e.mjs` spawns `server.js` on an ephemeral (or `PORT`) port, launches headless Chrome via `playwright-core`,
   clicks the real buttons, reads `window.__game` only to time throws with the hint API and to read state, and fails on
-  any page error or console error.
+  any page error, console error or console warning; it also drives the Graphics section at desktop and mobile
+  (Low → High, a bloom override, reload persistence, preset-clears-overrides, no horizontal cut-off).
 
 ## 14. Testing and acceptance criteria
 
@@ -384,7 +415,8 @@ banners, help cards) before the first mechanic; `node --check` clean on all JS; 
 
 ## 16. Known limitations
 
-- No localization layer; English literals throughout (section 10).
+- No localization layer; English literals throughout except the Graphics settings section (section 10), which follows
+  the browser language and so can differ from the rest of the English UI.
 - The platform leaderboard shows the ranked top 20 on the title-screen panel, but the player's own rank is not
   highlighted there and the daily board on the results screen still only announces submission success or failure.
 - Offline play shows "Guest" in the top-bar chip; the account nickname appears only when launched with a token.
@@ -395,7 +427,7 @@ banners, help cards) before the first mechanic; `node --check` clean on all JS; 
   comparator is locale-dependent in principle (`knownissues.md`).
 - The server regenerates the daily per request from wall-clock UTC; there is no mechanism to exclude a defective day
   from ranking, and rollover is not tested.
-- The hero knife model is shipped but the in-game blade is still the procedural box mesh.
+- The hero knife model is shipped but the in-game blade is still the procedural mesh.
 
 ## Design intent not yet implemented
 

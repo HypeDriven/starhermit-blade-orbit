@@ -9,8 +9,18 @@
  */
 
 import * as THREE from '../vendor/three.module.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
+import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { rotationAt, makeRng, TAU, SLOT_HALF } from './rules.js';
 import { themeById } from './content.js';
+import { detectPreset, resolve, describe, SHADOW_MAP, PARTICLE_CAP } from './gfx.js';
 
 // Authored framing constants (no magic offsets scattered through code)
 const FRAMING = {
@@ -24,18 +34,40 @@ const FRAMING = {
   introSwoopSeconds: 1.1,
 };
 
-const QUALITY_TIERS = {
-  low: { dpr: 1, shadows: false, particles: 80, envDetail: 0.4, shake: 0.5 },
-  medium: { dpr: 1.5, shadows: true, particles: 160, envDetail: 0.7, shake: 0.8 },
-  high: { dpr: 2, shadows: true, particles: 260, envDetail: 1, shake: 1 },
+// Colour grade + vignette, applied after OutputPass (display-space colours in and out).
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, uAmount: { value: 1.0 }, uVignette: { value: 0.26 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uAmount; uniform float uVignette;
+    varying vec2 vUv;
+    void main() {
+      vec4 src = texture2D(tDiffuse, vUv);
+      vec3 c = clamp(src.rgb, 0.0, 1.0);
+      // Gentle S-curve, a touch more saturation, warm highlights / cool shadows.
+      vec3 s = mix(c, c * c * (3.0 - 2.0 * c), 0.22);
+      float l = dot(s, vec3(0.299, 0.587, 0.114));
+      s = mix(vec3(l), s, 1.08);
+      s *= mix(vec3(0.97, 0.98, 1.04), vec3(1.04, 1.0, 0.95), smoothstep(0.2, 0.8, l));
+      c = mix(c, s, uAmount);
+      float d = length((vUv - 0.5) * vec2(1.15, 1.0));
+      c *= 1.0 - uVignette * smoothstep(0.32, 0.9, d);
+      gl_FragColor = vec4(c, src.a);
+    }`,
 };
 
-export function pickAutoTier() {
-  const mobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || '');
-  const mem = navigator.deviceMemory || 4;
-  if (mobile || mem <= 3) return 'low';
-  if (mem <= 6) return 'medium';
-  return 'high';
+function gpuName(gl) {
+  try {
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    return String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
+  } catch {
+    return '';
+  }
+}
+
+function isTouchDevice() {
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  return coarse || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent || '');
 }
 
 export function createRenderer(canvas, opts = {}) {
@@ -47,7 +79,6 @@ class BladeRenderer {
     this.canvas = canvas;
     this.onContextLost = onContextLost;
     this.onFps = onFps;
-    this.quality = QUALITY_TIERS.medium;
     this.reducedMotion = false;
     this.disposed = false;
 
@@ -55,6 +86,21 @@ class BladeRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // Graphics settings: detected tier, resolved tiers, adaptive resolution, post chain.
+    this.gpu = gpuName(this.renderer.getContext());
+    this.detected = detectPreset(this.gpu, isTouchDevice());
+    this.q = resolve({}, this.detected);
+    this.adaptiveScale = 1;
+    this._frames = [];
+    this.fps = 0;
+    this.size = [0, 0];
+    this.pixelRatio = 1;
+    this.composer = null;
+    this.postKey = null;
+    this.postFailed = false;
+    this.envMap = null;
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(FRAMING.fov, 1, 0.1, 60);
@@ -106,7 +152,9 @@ class BladeRenderer {
     this.buildEnvironment();
     this.buildWheel(content);
     this.buildReticle();
-    this.particles = new ParticlePool(this.fxGroup, this.quality.particles, `${content.seed}:fx`);
+    this.particles = new ParticlePool(this.fxGroup, PARTICLE_CAP[this.q.particles], `${content.seed}:fx`);
+    this.buildEmbers();
+    this.applyGraphicsToScene();
     this.swoop = { active: !this.reducedMotion, t: 0 };
     this.resize();
   }
@@ -115,33 +163,51 @@ class BladeRenderer {
     const t = this.theme;
     const key = new THREE.DirectionalLight(new THREE.Color(t.key), 2.4);
     key.position.set(2.5, 4, 4);
-    key.castShadow = this.quality.shadows;
     key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.left = -4; key.shadow.camera.right = 4;
-    key.shadow.camera.top = 4; key.shadow.camera.bottom = -4;
+    // Shadow frustum fitted tightly around the wheel, its stand and the flanking posts.
+    Object.assign(key.shadow.camera, { left: -3.3, right: 3.3, top: 3.1, bottom: -3.1, near: 1.5, far: 12 });
+    key.shadow.camera.updateProjectionMatrix();
+    key.shadow.bias = -0.0004;
+    key.shadow.normalBias = 0.015;
     const fill = new THREE.HemisphereLight(new THREE.Color(t.fill), new THREE.Color(t.floor), 0.9);
     const accent = new THREE.PointLight(new THREE.Color(t.accent), 6, 12, 1.6);
     accent.position.set(0, 0.3, 2.5);
-    this.envGroup.add(key, fill, accent);
+    // Cool rim light from behind the wheel: separates steel edges from the dark stage.
+    const rimLight = new THREE.DirectionalLight(new THREE.Color(t.fill).lerp(new THREE.Color('#ffffff'), 0.4), 1.1);
+    rimLight.position.set(-2, 3, -4);
+    this.envGroup.add(key, fill, accent, rimLight);
     this.keyLight = key;
+    this.accentLight = accent;
+    if (this.q.detail === 'detailed') {
+      // Theatrical overhead spot: a warm pool of light on the wheel and the boards below it.
+      const spot = new THREE.SpotLight(new THREE.Color(t.key), 24, 16, 0.42, 0.65, 1.6);
+      spot.position.set(0, 6.5, 3.2);
+      spot.target.position.set(0, -0.6, 0);
+      this.envGroup.add(spot, spot.target);
+    }
   }
 
   buildEnvironment() {
     const t = this.theme;
-    // floor
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(14, 40),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(t.floor), roughness: 0.95 })
-    );
+    const detailed = this.q.detail === 'detailed';
+    // floor: plain, or worn stage boards with a soft pool of light under the wheel
+    const floorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.floor), roughness: 0.95, envMapIntensity: 0.25 });
+    if (detailed) {
+      floorMat.map = makePlankTexture(t, `${this.content.seed}:floor`);
+      floorMat.color.set('#ffffff');
+      floorMat.roughness = 0.82;
+    }
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(14, 40), floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -2.2;
-    floor.receiveShadow = this.quality.shadows;
+    floor.receiveShadow = true;
     this.envGroup.add(floor);
 
     // backdrop curtain: vertical gradient canvas
     const bgCanvas = document.createElement('canvas');
     bgCanvas.width = 4; bgCanvas.height = 256;
-    const g = bgCanvas.getContext('2d');
+    // CPU-backed 2D canvases: uploading them to WebGL never forces a GPU readback stall.
+    const g = bgCanvas.getContext('2d', { willReadFrequently: true });
     const grad = g.createLinearGradient(0, 0, 0, 256);
     grad.addColorStop(0, t.sky);
     grad.addColorStop(0.7, t.fog);
@@ -156,20 +222,30 @@ class BladeRenderer {
     backdrop.position.set(0, 3, -10);
     this.envGroup.add(backdrop);
 
-    // stage props: carved posts flanking the wheel; density follows envDetail
-    const detail = this.quality.envDetail;
-    const postMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.woodDark), roughness: 0.9 });
-    const postGeo = new THREE.CylinderGeometry(0.16, 0.22, 4.4, 10);
-    const capGeo = new THREE.SphereGeometry(0.24, 10, 8);
+    // stage props: carved posts flanking the wheel; scenery density follows surface detail
+    const postMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.woodDark), roughness: 0.9, envMapIntensity: 0.3 });
+    const postGeo = new THREE.CylinderGeometry(0.16, 0.22, 4.4, detailed ? 16 : 10);
+    const capGeo = new THREE.SphereGeometry(0.24, detailed ? 20 : 10, detailed ? 14 : 8);
+    const bandGeo = new THREE.TorusGeometry(0.19, 0.03, 8, 20);
+    const brass = () => new THREE.MeshStandardMaterial({ color: new THREE.Color(t.rim), roughness: 0.36, metalness: 0.85, envMapIntensity: 0.5 });
     for (const sx of [-2.6, 2.6]) {
       const post = new THREE.Mesh(postGeo, postMat);
       post.position.set(sx, 0, -0.6);
-      post.castShadow = this.quality.shadows;
-      const cap = new THREE.Mesh(capGeo, new THREE.MeshStandardMaterial({ color: new THREE.Color(t.rim), roughness: 0.5, metalness: 0.6 }));
+      post.castShadow = true;
+      const cap = new THREE.Mesh(capGeo, brass());
       cap.position.set(sx, 2.3, -0.6);
       this.envGroup.add(post, cap);
+      if (detailed) {
+        // brass bands where the carved posts are bound
+        for (const y of [1.8, -1.2]) {
+          const band = new THREE.Mesh(bandGeo, brass());
+          band.rotation.x = Math.PI / 2;
+          band.position.set(sx, y, -0.6);
+          this.envGroup.add(band);
+        }
+      }
     }
-    if (detail > 0.5) {
+    if (detailed) {
       // scattered planks & crates for environmental storytelling
       const rng = makeRng(`${this.content.seed}:decor`);
       const crateGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
@@ -184,8 +260,47 @@ class BladeRenderer {
         crates.setMatrixAt(i, m);
       }
       crates.instanceMatrix.needsUpdate = true;
+      crates.castShadow = crates.receiveShadow = true;
       this.envGroup.add(crates);
     }
+  }
+
+  /** Slow drifting embers / dust motes in the stage light (Particles: High, full motion). */
+  buildEmbers() {
+    const n = 70;
+    const rng = makeRng(`${this.content.seed}:embers`);
+    const pos = new Float32Array(n * 3);
+    this.emberSeeds = [];
+    for (let i = 0; i < n; i++) {
+      pos[i * 3] = rng.range(-5, 5);
+      pos[i * 3 + 1] = rng.range(-2.2, 3.5);
+      pos[i * 3 + 2] = rng.range(-3.5, -0.4); // behind the wheel plane: never over gameplay
+      this.emberSeeds.push({ speed: rng.range(0.05, 0.18), phase: rng.range(0, TAU), sway: rng.range(0.05, 0.2) });
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const mat = new THREE.PointsMaterial({
+      map: getGlowTexture(), color: new THREE.Color(this.theme.accent), size: 0.07, sizeAttenuation: true,
+      transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending,
+    });
+    this.embers = new THREE.Points(geo, mat);
+    this.embers.raycast = () => {};
+    this.fxGroup.add(this.embers);
+  }
+
+  updateEmbers(dt) {
+    if (!this.embers) return;
+    this.embers.visible = this.q.particles === 'high';
+    if (!this.embers.visible || this.reducedMotion) return;
+    const attr = this.embers.geometry.attributes.position;
+    const a = attr.array;
+    for (let i = 0; i < this.emberSeeds.length; i++) {
+      const e = this.emberSeeds[i];
+      a[i * 3 + 1] += e.speed * dt;
+      a[i * 3] += Math.sin(this.time * 0.6 + e.phase) * e.sway * dt;
+      if (a[i * 3 + 1] > 3.6) a[i * 3 + 1] = -2.2;
+    }
+    attr.needsUpdate = true;
   }
 
   buildWheel(content) {
@@ -193,18 +308,22 @@ class BladeRenderer {
     const R = FRAMING.wheelRadius;
 
     // carved wooden face (procedural canvas texture, seeded)
-    const faceTex = makeWoodTexture(this.theme, `${content.seed}:wood`, 512);
-    const face = new THREE.Mesh(
-      new THREE.CircleGeometry(R, 72),
-      new THREE.MeshStandardMaterial({ map: faceTex, roughness: 0.8, metalness: 0.02 })
-    );
-    face.receiveShadow = this.quality.shadows;
+    const detailed = this.q.detail === 'detailed';
+    const faceTex = makeWoodTexture(this.theme, `${content.seed}:wood`, detailed ? 1024 : 512);
+    // Varnished face: clearcoat sheen over the wood; carved grain doubles as a bump map.
+    this.faceMaterial = new THREE.MeshPhysicalMaterial({
+      map: faceTex, roughness: 0.72, metalness: 0.02, envMapIntensity: 0.18,
+      clearcoat: detailed ? 0.22 : 0, clearcoatRoughness: 0.4,
+      bumpMap: detailed ? faceTex : null, bumpScale: 2.2,
+    });
+    const face = new THREE.Mesh(new THREE.CircleGeometry(R, 96), this.faceMaterial);
+    face.receiveShadow = true;
     this.wheelGroup.add(face);
 
     // thickness / edge
     const edge = new THREE.Mesh(
-      new THREE.CylinderGeometry(R, R, 0.18, 72, 1, true),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(t.woodDark), roughness: 0.9 })
+      new THREE.CylinderGeometry(R, R, 0.18, 96, 1, true),
+      new THREE.MeshStandardMaterial({ color: new THREE.Color(t.woodDark), roughness: 0.85, envMapIntensity: 0.3 })
     );
     edge.rotation.x = Math.PI / 2;
     edge.position.z = -0.09;
@@ -212,12 +331,13 @@ class BladeRenderer {
 
     // metal rim + rivets (instanced)
     const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(R, 0.05, 12, 72),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(t.rim), roughness: 0.35, metalness: 0.8 })
+      new THREE.TorusGeometry(R, 0.05, 16, 120),
+      new THREE.MeshPhysicalMaterial({ color: new THREE.Color(t.rim), roughness: 0.34, metalness: 0.9, clearcoat: 0.2, clearcoatRoughness: 0.3, envMapIntensity: 0.45 })
     );
+    rim.castShadow = true;
     this.wheelGroup.add(rim);
-    const rivetGeo = new THREE.SphereGeometry(0.035, 8, 6);
-    const rivetMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.metal), roughness: 0.3, metalness: 0.9 });
+    const rivetGeo = new THREE.SphereGeometry(0.035, 12, 8);
+    const rivetMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.metal), roughness: 0.3, metalness: 0.95, envMapIntensity: 0.6 });
     const rivets = new THREE.InstancedMesh(rivetGeo, rivetMat, 12);
     const rm = new THREE.Matrix4();
     for (let i = 0; i < 12; i++) {
@@ -229,12 +349,15 @@ class BladeRenderer {
     this.wheelGroup.add(rivets);
 
     // hub
-    const hub = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.22, 0.22, 0.22, 24),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(t.rim), roughness: 0.4, metalness: 0.7 })
-    );
+    const hubMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(t.rim), roughness: 0.38, metalness: 0.8, clearcoat: 0.2, envMapIntensity: 0.45 });
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.16, 32), hubMat);
     hub.rotation.x = Math.PI / 2;
-    this.wheelGroup.add(hub);
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 12, 0, TAU, 0, Math.PI / 2), hubMat);
+    boss.rotation.x = Math.PI / 2;
+    boss.scale.set(1, 0.55, 1);
+    boss.position.z = 0.08;
+    hub.castShadow = boss.castShadow = true;
+    this.wheelGroup.add(hub, boss);
 
     // preplaced slots: blades & protected markers (shape + color redundancy)
     for (const slot of content.preplaced || []) {
@@ -243,12 +366,13 @@ class BladeRenderer {
     }
 
     // stand holding the wheel
-    const standMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.woodDark), roughness: 0.9 });
+    const standMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.woodDark), roughness: 0.85, envMapIntensity: 0.3 });
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 2.4, 0.3), standMat);
     leg.position.set(0, -2.15, -0.25);
     const base = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.18, 0.8), standMat);
     base.position.set(0, -2.2, -0.25);
-    leg.castShadow = base.castShadow = this.quality.shadows;
+    leg.castShadow = base.castShadow = true;
+    leg.receiveShadow = base.receiveShadow = true;
     this.stageGroup.add(leg, base);
 
     // standby blade visible at the throw origin (the "next" blade)
@@ -360,7 +484,7 @@ class BladeRenderer {
 
   addShake(amp) {
     if (this.reducedMotion) return;
-    this.shake.amp = Math.min(0.06, this.shake.amp + amp * this.quality.shake);
+    this.shake.amp = Math.min(0.06, this.shake.amp + amp);
     this.shake.t = 0;
   }
 
@@ -379,7 +503,13 @@ class BladeRenderer {
     const renderTick = state.tick + alpha;
     this.wheelGroup.rotation.z = rotationAt(state.rotation, renderTick);
 
-    // gentle decorative breathing on the hub light — paused when hidden by caller
+    // ambient motion: embers drift and the accent light shimmers like a lamp flame
+    this.updateEmbers(dt);
+    if (this.accentLight) {
+      const flicker = this.reducedMotion ? 0 : 0.06 * Math.sin(this.time * 7.3) + 0.04 * Math.sin(this.time * 12.9 + 1.7);
+      this.accentLight.intensity = 6 * (1 + flicker);
+    }
+
     // flying blades
     for (const fb of this.flyingBlades) {
       fb.t += dt;
@@ -441,7 +571,7 @@ class BladeRenderer {
     this.camera.position.copy(camPos);
     this.camera.lookAt(look);
 
-    this.renderer.render(this.scene, this.camera);
+    this.present(dtMs);
 
     // fps probe
     this.fpsAccum.frames++;
@@ -452,17 +582,191 @@ class BladeRenderer {
     }
   }
 
+  /** Draw the frame: adaptive resolution, pixel ratio, then the post chain or a direct render. */
+  present(dtMs) {
+    if (this._adapt(dtMs) || this._ratio() !== this.pixelRatio) this.resize();
+    const [w, h] = this.size;
+    const key = this._postKey(w, h);
+    if (key !== this.postKey) {
+      this.postKey = key;
+      this._buildPost(w, h);
+    }
+    if (this.composer) {
+      try {
+        this.composer.render(dtMs / 1000);
+        return;
+      } catch {
+        this._postFailed();
+      }
+    }
+    this.renderer.render(this.scene, this.camera);
+  }
+
   interruptSwoop() { this.swoop.t = 1; }
 
   // --- quality / accessibility / lifecycle -----------------------------------
 
-  setQuality(tierName) {
-    const tier = QUALITY_TIERS[tierName] || QUALITY_TIERS.medium;
-    this.quality = tier;
-    if (this.keyLight) this.keyLight.castShadow = tier.shadows;
-    this.renderer.shadowMap.enabled = tier.shadows;
-    this.particles?.setCapacity(tier.particles);
+  /** Apply saved graphics settings ({ preset, render_scale, adaptive, show_fps, <category> }) live. */
+  setGraphics(saved) {
+    const prev = this.q;
+    const g = resolve(saved || {}, this.detected);
+    this.q = g;
+    this.adaptiveScale = 1;
+    this._frames = [];
+    this.postKey = null; // rebuild the post chain on the next frame
+    this._fpsVisible(g.showFps);
+    this.canvas.dataset.gfxPreset = g.preset;
+    this.canvas.dataset.gfxAuto = String(g.auto);
+    if (this.content && prev.detail !== g.detail) {
+      // Scenery and texture resolution depend on detail: rebuild the stage dressing.
+      this.clearGroup(this.envGroup);
+      this.buildLights();
+      this.buildEnvironment();
+      const old = this.faceMaterial;
+      const tex = makeWoodTexture(this.theme, `${this.content.seed}:wood`, g.detail === 'detailed' ? 1024 : 512);
+      old.map?.dispose();
+      old.map = tex;
+      old.bumpMap = g.detail === 'detailed' ? tex : null;
+      old.clearcoat = g.detail === 'detailed' ? 0.22 : 0;
+      old.needsUpdate = true;
+    }
+    this.applyGraphicsToScene();
     this.resize();
+  }
+
+  /** Push resolved tiers into lights, materials, environment and particle pools. */
+  applyGraphicsToScene() {
+    const g = this.q;
+    const size = SHADOW_MAP[g.shadows];
+    this.renderer.shadowMap.enabled = size > 0;
+    if (this.keyLight) {
+      this.keyLight.castShadow = size > 0;
+      if (size > 0 && this.keyLight.shadow.mapSize.x !== size) {
+        this.keyLight.shadow.mapSize.set(size, size);
+        this.keyLight.shadow.map?.dispose();
+        this.keyLight.shadow.map = null;
+      }
+    }
+    if (g.reflections === 'on' && !this.envMap) {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      const room = new RoomEnvironment();
+      this.envMap = pmrem.fromScene(room, 0.04).texture;
+      room.traverse((o) => { o.geometry?.dispose(); o.material?.dispose?.(); });
+      pmrem.dispose();
+    }
+    this.scene.environment = g.reflections === 'on' ? this.envMap : null;
+    this.particles?.setCapacity(PARTICLE_CAP[g.particles]);
+    if (this.embers) this.embers.visible = g.particles === 'high';
+    // Materials pick up shadow-map and environment changes on recompile (only when those changed).
+    const matKey = `${g.shadows}|${g.reflections}`;
+    if (matKey === this._matKey) return;
+    this._matKey = matKey;
+    this.scene.traverse((o) => {
+      if (!o.material) return;
+      for (const m of Array.isArray(o.material) ? o.material : [o.material]) m.needsUpdate = true;
+    });
+  }
+
+  /** What the settings panel shows: GPU, auto choice, resolved tiers, cost summary and frame rate. */
+  graphicsInfo(words) {
+    const px = [Math.round(this.size[0] * this.pixelRatio), Math.round(this.size[1] * this.pixelRatio)];
+    return {
+      gpu: this.gpu,
+      detected: this.detected,
+      resolved: this.q,
+      summary: describe(this.q, px, words),
+      fps: Math.round(this.fps || 0),
+      adaptiveScale: Math.round(this.adaptiveScale * 100) / 100,
+      postFailed: this.postFailed,
+    };
+  }
+
+  _ratio() {
+    const g = this.q;
+    return Math.min(window.devicePixelRatio || 1, g.dprCap) * g.scale * this.adaptiveScale;
+  }
+
+  _fpsVisible(on) {
+    let el = document.getElementById('fps-meter');
+    if (on && !el) {
+      el = document.createElement('div');
+      el.id = 'fps-meter';
+      el.className = 'fps-meter';
+      el.setAttribute('aria-hidden', 'true');
+      document.body.append(el);
+    }
+    if (el) el.hidden = !on;
+  }
+
+  _postKey(w, h) {
+    const g = this.q;
+    return g.post && !this.postFailed ? [g.ao, g.bloom, g.grade, g.antialias, w, h, this.pixelRatio].join('|') : 'none';
+  }
+
+  _postFailed() {
+    // Post-processing is an enhancement: render directly if the chain cannot be built or run.
+    this.postFailed = true;
+    this.composer?.dispose();
+    this.composer = null;
+    this.postKey = 'none';
+  }
+
+  _buildPost(w, h) {
+    const g = this.q;
+    this.composer?.dispose();
+    this.composer = null;
+    if (!g.post || this.postFailed) return;
+    const pr = this.pixelRatio;
+    const W = Math.max(1, Math.round(w * pr)), H = Math.max(1, Math.round(h * pr));
+    try {
+      const target = new THREE.WebGLRenderTarget(W, H, {
+        type: THREE.HalfFloatType, samples: g.antialias === 'msaa' ? 4 : 0,
+      });
+      const composer = new EffectComposer(this.renderer, target);
+      composer.setPixelRatio(pr);
+      composer.setSize(w, h);
+      composer.addPass(new RenderPass(this.scene, this.camera));
+      if (g.ao !== 'off') {
+        const ao = new GTAOPass(this.scene, this.camera, W, H);
+        ao.output = GTAOPass.OUTPUT.Default;
+        ao.blendIntensity = 0.75;
+        ao.updateGtaoMaterial({ radius: 0.35, distanceExponent: 1.5, thickness: 0.6, scale: 1.0, samples: g.ao === 'high' ? 16 : 8 });
+        ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === 'high' ? 6 : 4, rings: 2, samples: g.ao === 'high' ? 16 : 8 });
+        composer.addPass(ao);
+      }
+      if (g.bloom === 'on') {
+        // High threshold: only sigils, sparks and bright steel highlights bloom.
+        composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.4, 0.35, 0.9));
+      }
+      composer.addPass(new OutputPass());
+      if (g.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
+      if (g.antialias === 'smaa') composer.addPass(new SMAAPass(W, H));
+      if (g.antialias === 'fxaa') {
+        const fxaa = new ShaderPass(FXAAShader);
+        fxaa.material.uniforms.resolution.value.set(1 / W, 1 / H);
+        composer.addPass(fxaa);
+      }
+      this.composer = composer;
+    } catch {
+      this._postFailed();
+    }
+  }
+
+  // Adaptive resolution: step the render scale down when frames are slow, back up when fast.
+  _adapt(dtMs) {
+    const f = this._frames;
+    f.push(dtMs);
+    if (f.length < 90) return false;
+    const avg = f.reduce((a, b) => a + b, 0) / f.length;
+    f.length = 0;
+    this.fps = 1000 / avg;
+    const el = document.getElementById('fps-meter');
+    if (el && !el.hidden) el.textContent = `${Math.round(this.fps)} fps · ${Math.round(this.pixelRatio * 100) / 100}×`;
+    if (!this.q.adaptive) return false;
+    const before = this.adaptiveScale;
+    if (avg > 26) this.adaptiveScale = Math.max(0.6, this.adaptiveScale - 0.1);
+    else if (avg < 14 && this.adaptiveScale < 1) this.adaptiveScale = Math.min(1, this.adaptiveScale + 0.05);
+    return before !== this.adaptiveScale;
   }
 
   setReducedMotion(on) {
@@ -473,8 +777,10 @@ class BladeRenderer {
   resize() {
     const w = Math.max(2, this.canvas.clientWidth || this.canvas.parentElement?.clientWidth || 2);
     const h = Math.max(2, this.canvas.clientHeight || this.canvas.parentElement?.clientHeight || 2);
-    const dpr = Math.min(window.devicePixelRatio || 1, this.quality.dpr);
-    this.renderer.setPixelRatio(dpr);
+    const ratio = this._ratio();
+    this.size = [w, h];
+    this.pixelRatio = ratio;
+    this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -540,6 +846,8 @@ class BladeRenderer {
     this.clearGroup(this.stageGroup);
     this.clearGroup(this.wheelGroup);
     this.clearGroup(this.fxGroup);
+    this.composer?.dispose();
+    this.envMap?.dispose();
     this.renderer.dispose();
   }
 }
@@ -556,13 +864,25 @@ function localAngle(deg) {
 let bladeGeos = null;
 function getBladeGeos() {
   if (bladeGeos) return bladeGeos;
-  // tapered blade: flattened, stretched diamond-ish box
-  const blade = new THREE.BoxGeometry(0.055, 0.34, 0.016);
-  blade.translate(0, 0.17, 0);
-  const handle = new THREE.CylinderGeometry(0.028, 0.034, 0.2, 8);
+  // tapered, bevelled blade profile with a pointed tip (same footprint as before)
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.026, 0);
+  shape.lineTo(0.026, 0);
+  shape.lineTo(0.024, 0.24);
+  shape.lineTo(0, 0.34);
+  shape.lineTo(-0.024, 0.24);
+  shape.closePath();
+  const blade = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.008, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 1, curveSegments: 1,
+  });
+  blade.translate(0, 0, -0.004);
+  blade.computeVertexNormals();
+  const handle = new THREE.CylinderGeometry(0.028, 0.034, 0.2, 12);
   handle.translate(0, -0.1, 0);
   const guard = new THREE.BoxGeometry(0.11, 0.03, 0.04);
-  bladeGeos = { blade, handle, guard };
+  const pommel = new THREE.SphereGeometry(0.036, 12, 8);
+  pommel.translate(0, -0.205, 0);
+  bladeGeos = { blade, handle, guard, pommel };
   return bladeGeos;
 }
 
@@ -573,13 +893,17 @@ function getBladeGeos() {
 function makeBladeMesh(theme, angle, flight) {
   const g = getBladeGeos();
   const group = new THREE.Group();
-  const bladeMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.metal), roughness: 0.25, metalness: 0.9 });
-  const handleMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.handle), roughness: 0.75 });
-  const guardMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.rim), roughness: 0.4, metalness: 0.7 });
+  const bladeMat = new THREE.MeshPhysicalMaterial({
+    color: new THREE.Color(theme.metal), roughness: 0.24, metalness: 0.92, clearcoat: 0.2, clearcoatRoughness: 0.2, envMapIntensity: 0.8,
+  });
+  const handleMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.handle), roughness: 0.7, envMapIntensity: 0.4 });
+  const guardMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.rim), roughness: 0.32, metalness: 0.85, envMapIntensity: 0.6 });
   const blade = new THREE.Mesh(g.blade, bladeMat);
   const handle = new THREE.Mesh(g.handle, handleMat);
   const guard = new THREE.Mesh(g.guard, guardMat);
-  group.add(blade, handle, guard);
+  const pommel = new THREE.Mesh(g.pommel, guardMat);
+  for (const m of [blade, handle, guard, pommel]) m.castShadow = true;
+  group.add(blade, handle, guard, pommel);
   if (!flight) {
     // on the wheel: blade sticks out of the face toward the camera, handle outward
     const r = FRAMING.bladeOrbitRadius;
@@ -597,12 +921,13 @@ function makeMarkerMesh(theme, angle) {
     new THREE.CircleGeometry(0.14, 6), // hexagon — shape coding distinct from blades
     new THREE.MeshStandardMaterial({
       color: new THREE.Color(theme.marker), roughness: 0.4, metalness: 0.2,
-      emissive: new THREE.Color(theme.marker), emissiveIntensity: 0.55,
+      emissive: new THREE.Color(theme.marker), emissiveIntensity: 0.9,
     })
   );
+  // The ward ring is over-bright so it blooms when bloom is on (glowing sigil), crisp otherwise.
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.16, 0.19, 24),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(theme.marker), transparent: true, opacity: 0.7 })
+    new THREE.RingGeometry(0.16, 0.19, 32),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(theme.marker).multiplyScalar(1.8), transparent: true, opacity: 0.8 })
   );
   group.add(disc, ring);
   const r = FRAMING.bladeOrbitRadius;
@@ -611,11 +936,13 @@ function makeMarkerMesh(theme, angle) {
 }
 
 /** Seeded carved-wood face texture: growth rings, grain streaks, carve notches. */
-function makeWoodTexture(theme, seed, size = 512) {
+function makeWoodTexture(theme, seed, px = 512) {
   const rng = makeRng(seed);
   const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const g = c.getContext('2d');
+  c.width = c.height = px;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.scale(px / 512, px / 512); // draw in a fixed 512 space; higher resolutions only add fine grain
+  const size = 512;
   const cx = size / 2, cy = size / 2;
   g.fillStyle = theme.wood;
   g.fillRect(0, 0, size, size);
@@ -657,10 +984,79 @@ function makeWoodTexture(theme, seed, size = 512) {
   g.fillStyle = grad;
   g.fillRect(0, 0, size, size);
 
+  if (px > 512) {
+    // fine fibre noise: short tangential scratches that catch the bump map and clearcoat
+    for (let i = 0; i < 2600; i++) {
+      const a = rng.range(0, TAU);
+      const r = rng.range(20, size * 0.49);
+      const len = rng.range(0.03, 0.12);
+      g.beginPath();
+      g.arc(cx, cy, r, a, a + len);
+      g.strokeStyle = rgba(rng.next() < 0.6 ? theme.woodDark : theme.ring, 0.08 + rng.next() * 0.1);
+      g.lineWidth = 0.4 + rng.next() * 0.6;
+      g.stroke();
+    }
+  }
+
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = 8;
   return tex;
+}
+
+/** Seeded worn stage boards for the floor (tiling). */
+function makePlankTexture(theme, seed) {
+  const rng = makeRng(seed);
+  const size = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.fillStyle = theme.floor;
+  g.fillRect(0, 0, size, size);
+  const boards = 8;
+  const bw = size / boards;
+  for (let b = 0; b < boards; b++) {
+    const x = b * bw;
+    g.fillStyle = rgba(rng.next() < 0.5 ? theme.woodDark : theme.wood, 0.12 + rng.next() * 0.14);
+    g.fillRect(x, 0, bw, size);
+    for (let i = 0; i < 14; i++) {
+      const gx = x + rng.range(3, bw - 3);
+      g.beginPath();
+      g.moveTo(gx, 0);
+      g.bezierCurveTo(gx + rng.range(-4, 4), size * 0.33, gx + rng.range(-4, 4), size * 0.66, gx + rng.range(-2, 2), size);
+      g.strokeStyle = rgba(theme.woodDark, 0.12 + rng.next() * 0.15);
+      g.lineWidth = 0.6 + rng.next() * 1.2;
+      g.stroke();
+    }
+    // board seams and a staggered butt joint
+    g.fillStyle = rgba('#000000', 0.45);
+    g.fillRect(x, 0, 2, size);
+    g.fillRect(x, rng.range(0, size), bw, 2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(6, 6);
+  tex.anisotropy = 8;
+  return tex;
+}
+
+let glowTexture = null;
+/** Soft round sprite shared by the ember motes. */
+function getGlowTexture() {
+  if (glowTexture) return glowTexture;
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  glowTexture = new THREE.CanvasTexture(c);
+  glowTexture.colorSpace = THREE.SRGBColorSpace;
+  return glowTexture;
 }
 
 function rgba(hex, a) {
@@ -675,22 +1071,26 @@ function rgba(hex, a) {
 class ParticlePool {
   constructor(parent, capacity, seed) {
     this.parent = parent;
-    this.capacity = capacity;
     this.rng = makeRng(seed);
     this.slots = [];
-    const geo = new THREE.PlaneGeometry(0.035, 0.035);
-    for (let i = 0; i < capacity; i++) {
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
-      const m = new THREE.Mesh(geo, mat);
-      m.visible = false;
-      m.raycast = () => {}; // cosmetics never intercept picking
-      parent.add(m);
-      this.slots.push({ mesh: m, alive: false, vx: 0, vy: 0, vz: 0, life: 0, age: 0 });
-    }
+    this.geo = new THREE.PlaneGeometry(0.035, 0.035);
     this.cursor = 0;
+    this.setCapacity(capacity);
   }
 
-  setCapacity(n) { this.capacity = Math.min(n, this.slots.length); }
+  /** Grow the pool on demand (never shrinks its meshes; only the active window). */
+  setCapacity(n) {
+    while (this.slots.length < n) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+      const m = new THREE.Mesh(this.geo, mat);
+      m.visible = false;
+      m.raycast = () => {}; // cosmetics never intercept picking
+      this.parent.add(m);
+      this.slots.push({ mesh: m, alive: false, vx: 0, vy: 0, vz: 0, life: 0, age: 0 });
+    }
+    this.capacity = n;
+    if (this.cursor >= n) this.cursor = 0;
+  }
 
   burst(pos, { count, color, speed, life, tag }) {
     const col = new THREE.Color(color);
@@ -709,6 +1109,7 @@ class ParticlePool {
       s.mesh.visible = true;
       s.mesh.position.copy(pos);
       s.mesh.material.color.copy(col);
+      if (tag === 'spark') s.mesh.material.color.multiplyScalar(2.2); // hot sparks bloom
       s.mesh.material.opacity = 1;
       const sc = tag === 'spark' ? 0.8 : 1.4;
       s.mesh.scale.setScalar(sc * (0.6 + this.rng.next() * 0.8));

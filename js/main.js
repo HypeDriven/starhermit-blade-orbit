@@ -11,7 +11,8 @@ import {
   themeById, validateAllContent,
 } from './content.js';
 import { Session, store, evaluateAchievements, ACHIEVEMENTS } from './session.js';
-import { createRenderer, pickAutoTier } from './render.js';
+import { createRenderer } from './render.js';
+import { normalizePreset, CATEGORIES } from './gfx.js';
 import { createUI } from './ui.js';
 import { AudioEngine } from './audio.js';
 import { Platform } from './platform.js';
@@ -27,6 +28,8 @@ class Game {
     this.pendingContent = null;
     this.pendingRanked = false;
     this.settings = store.getSettings();
+    this.settings.quality = normalizePreset(this.settings.quality); // legacy 'medium' → 'balanced'
+    this.settings.graphics = { ...(this.settings.graphics || {}) };
     this.progression = store.getProgression();
     this.platform = new Platform();
     this.inputLocked = false;
@@ -34,7 +37,6 @@ class Game {
     this.accumulator = 0;
     this.lastFrame = 0;
     this.idleTick = 0; // cosmetic spin for menus/countdown
-    this.lowFpsCount = 0;
     this.gamepadPrev = {};
     this.returnScreen = 'title';
 
@@ -45,6 +47,7 @@ class Game {
       sound: (name) => { this.audio.start(); this.audio.event(name); },
       getSettings: () => this.settings,
       settingChanged: (k, v) => this.onSettingChanged(k, v),
+      graphicsInfo: (words) => this.renderer?.graphicsInfo(words) || null,
     });
 
     this.canvas = document.getElementById('game-canvas');
@@ -88,6 +91,7 @@ class Game {
       this.renderer.setReticleMode('hidden');
     }
 
+    this.ui.refreshGraphics();
     this.buildMenus();
     this.ui.showScreen('title');
     this.ui.updateTitle(this.progression, this.hasResumableSnapshot());
@@ -360,6 +364,7 @@ class Game {
     this.audio.stopAmbience();
     this.platform.stopPresence();
     this.ui.showTutorialBanner(null);
+    this.ui.refreshGraphics();
     this.buildMenus();
     this.ui.showScreen('title');
     this.ui.updateTitle(this.progression, this.hasResumableSnapshot());
@@ -594,28 +599,28 @@ class Game {
     this.ui.applySettingsToDom(this.settings);
     this.audio.settings = this.settings;
     this.audio.applyVolumes();
-    if (key === 'quality') this.applyQuality();
+    if (key === 'quality') {
+      // Choosing a preset clears per-category overrides (render scale and toggles stay).
+      const g = { ...(this.settings.graphics || {}) };
+      for (const cat of Object.keys(CATEGORIES)) delete g[cat];
+      this.settings.graphics = g;
+      store.saveSettings(this.settings);
+    }
+    if (key === 'quality' || key === 'graphics') {
+      this.applyQuality();
+      this.ui.refreshGraphics();
+    }
     if (key === 'reducedMotion') this.renderer?.setReducedMotion(!!value);
     this.platform.track('settings_change', { category: key });
   }
 
   applyQuality() {
     if (!this.renderer) return;
-    const q = this.settings.quality === 'auto' ? pickAutoTier() : this.settings.quality;
-    this.renderer.setQuality(q);
+    this.renderer.setGraphics({ ...this.settings.graphics, preset: normalizePreset(this.settings.quality) });
   }
 
-  onFps(fps) {
-    // dynamic render-scale drop before ever touching the simulation rate
-    if (this.settings.quality !== 'auto') return;
-    if (fps < 42) {
-      this.lowFpsCount++;
-      if (this.lowFpsCount >= 3) {
-        this.lowFpsCount = 0;
-        this.renderer.setQuality(fps < 28 ? 'low' : 'medium');
-        this.ui.announce('Graphics quality lowered to keep the game smooth.');
-      }
-    } else this.lowFpsCount = 0;
+  onFps() {
+    // Frame-rate adaptation lives in the renderer (adaptive resolution); nothing to do here.
   }
 
   onContextLost() {

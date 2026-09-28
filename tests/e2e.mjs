@@ -49,16 +49,21 @@ async function startServer() {
 }
 const BASE = process.env.BASE_URL || (await startServer());
 
+// Headless needs no display; a stale WSLg/Wayland socket can otherwise stall GPU start-up.
+const { WAYLAND_DISPLAY, DISPLAY, ...browserEnv } = process.env;
 const browser = await chromium.launch({
   executablePath: '/usr/bin/google-chrome',
-  args: ['--no-sandbox', '--enable-unsafe-swiftshader'],
+  args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  env: browserEnv,
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.text()}`); });
+page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${currentStep}] console ${m.type()}: ${m.text()}`); });
 
+let currentStep = 'startup';
 const step = async (name, fn) => {
+  currentStep = name;
   await fn();
   console.log(`ok - ${name}`);
 };
@@ -228,6 +233,72 @@ await step('daily score submission validates against server', async () => {
   });
   console.log('  daily board entries:', status);
   if (status < 1) throw new Error('score not on board');
+});
+
+/* Graphics settings through the visible UI: preset switch, one override, persistence
+ * across reload, at desktop and mobile viewports. */
+async function graphicsFlow(p, label) {
+  const gfx = () => p.evaluate(() => ({
+    canvas: document.getElementById('game-canvas').dataset.gfxPreset,
+    body: document.body.dataset.gfxPreset,
+    q: window.__game.renderer?.q,
+    summary: document.getElementById('gfx-summary').textContent,
+    quality: document.getElementById('set-quality').value,
+    bloomSel: document.getElementById('gfx-bloom').value,
+  }));
+  await p.goto(BASE, { waitUntil: 'load' });
+  await p.waitForFunction(() => window.__game?.phase === 'title', null, { timeout: 15000 });
+  const auto = await gfx();
+  if (auto.canvas !== 'low') throw new Error(`${label}: headless Auto should resolve to low, got ${auto.canvas}`);
+  await p.click('#btn-title-settings');
+  await p.waitForSelector('#screen-settings:not([hidden])');
+  await p.locator('#gfx-section').scrollIntoViewIfNeeded();
+  const autoLabel = await p.locator('#set-quality option[value="auto"]').textContent();
+  if (!/detected: Low/.test(autoLabel)) throw new Error(`${label}: auto label "${autoLabel}"`);
+  await p.selectOption('#set-quality', 'low');
+  let g = await gfx();
+  if (g.canvas !== 'low' || g.q.post) throw new Error(`${label}: Low not applied ${JSON.stringify(g)}`);
+  await p.selectOption('#set-quality', 'high');
+  g = await gfx();
+  if (g.canvas !== 'high' || g.q.shadows !== 'medium' || g.q.bloom !== 'on') throw new Error(`${label}: High not applied`);
+  if (!/2048² shadows/.test(g.summary)) throw new Error(`${label}: summary "${g.summary}"`);
+  await p.selectOption('#gfx-bloom', 'off');
+  g = await gfx();
+  if (g.q.bloom !== 'off' || / bloom/.test(g.summary)) throw new Error(`${label}: bloom override not applied`);
+  // the whole Graphics section fits the viewport width (no horizontal cut-off)
+  const overflow = await p.evaluate(() => {
+    const vw = document.documentElement.clientWidth;
+    return [...document.querySelectorAll('#gfx-section select, #gfx-section input, #gfx-summary')]
+      .filter((el) => { const r = el.getBoundingClientRect(); return r.left < 0 || r.right > vw + 1; }).map((el) => el.id);
+  });
+  if (overflow.length) throw new Error(`${label}: controls overflow the viewport: ${overflow}`);
+  await p.screenshot({ path: SHOT(`graphics-${label}`) });
+  await p.reload({ waitUntil: 'load' });
+  await p.waitForFunction(() => window.__game?.phase === 'title', null, { timeout: 15000 });
+  g = await gfx();
+  if (g.canvas !== 'high' || g.quality !== 'high' || g.bloomSel !== 'off' || g.q.bloom !== 'off') {
+    throw new Error(`${label}: settings did not survive reload ${JSON.stringify({ ...g, q: undefined })}`);
+  }
+  // choosing a preset clears overrides; restore Auto so later runs stay cheap
+  await p.click('#btn-title-settings');
+  await p.selectOption('#set-quality', 'auto');
+  g = await gfx();
+  if (g.bloomSel !== 'preset' || g.canvas !== 'low') throw new Error(`${label}: preset did not clear overrides`);
+  await p.click('#btn-settings-back');
+}
+
+await step('graphics settings: desktop (1280x800)', async () => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await graphicsFlow(page, 'desktop');
+});
+
+await step('graphics settings: mobile (390x844, touch)', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  const mp = await ctx.newPage();
+  mp.on('pageerror', (e) => errors.push(`mobile pageerror: ${e.message}`));
+  mp.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`mobile console ${m.type()}: ${m.text()}`); });
+  await graphicsFlow(mp, 'mobile');
+  await ctx.close();
 });
 
 await browser.close();

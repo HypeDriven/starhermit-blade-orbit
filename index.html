@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#1a0f0a" />
   <title>Blade Orbit</title>
   <link rel="stylesheet" href="css/main.css" />
-  <script type="importmap">{ "imports": { "three": "./vendor/three.module.js" } }</script>
+  <script type="importmap">{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to game</a>
@@ -106,6 +106,7 @@
             <button id="btn-leaderboard" class="btn" type="button">Leaderboards</button>
             <button id="btn-journey" class="btn" type="button">Journey</button>
             <button id="btn-tutorial" class="btn" type="button">Learn to Play</button>
+            <button id="btn-title-settings" class="btn" type="button">Settings</button>
           </div>
           <p id="title-progress" class="title-progress"></p>
         </div>
@@ -209,16 +210,35 @@
               <label>Voice cues <input id="set-voice" type="range" min="0" max="1" step="0.05" /></label>
               <label class="check"><input id="set-captions" type="checkbox" /> Captions / text cues</label>
             </fieldset>
+            <fieldset id="gfx-section" class="gfx-section">
+              <legend data-gfx-text="graphics">Graphics</legend>
+              <div class="gfx-grid">
+                <label><span data-gfx-text="quality">Quality</span>
+                  <select id="set-quality" data-gfx="preset">
+                    <option value="auto">Auto</option>
+                    <option value="low">Low</option>
+                    <option value="balanced">Balanced</option>
+                    <option value="high">High</option>
+                    <option value="ultra">Ultra</option>
+                  </select>
+                </label>
+                <label><span data-gfx-text="renderScale">Render scale</span>
+                  <span class="gfx-range">
+                    <input id="gfx-render-scale" data-gfx="render_scale" type="range" min="50" max="200" step="10" value="100" />
+                    <output id="gfx-render-scale-value" for="gfx-render-scale">100%</output>
+                  </span>
+                </label>
+              </div>
+              <div id="gfx-categories" class="gfx-grid"></div>
+              <div class="gfx-grid">
+                <label class="check"><input id="gfx-adaptive" data-gfx="adaptive" type="checkbox" /> <span data-gfx-text="adaptive">Adaptive resolution</span></label>
+                <label class="check"><input id="gfx-show-fps" data-gfx="show_fps" type="checkbox" /> <span data-gfx-text="showFps">Show frame rate</span></label>
+              </div>
+              <p id="gfx-summary" class="fine-print gfx-summary"></p>
+              <p id="gfx-post-note" class="fine-print gfx-note" role="status" hidden></p>
+            </fieldset>
             <fieldset>
-              <legend>Graphics</legend>
-              <label>Quality tier
-                <select id="set-quality">
-                  <option value="auto">Auto</option>
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                </select>
-              </label>
+              <legend>Accessibility</legend>
               <label class="check"><input id="set-reduced-motion" type="checkbox" /> Reduced motion</label>
               <label class="check"><input id="set-high-contrast" type="checkbox" /> High contrast</label>
               <label>Color palette
