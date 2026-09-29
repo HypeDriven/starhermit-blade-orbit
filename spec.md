@@ -436,3 +436,7 @@ banners, help cards) before the first mechanic; `node --check` clean on all JS; 
 3. Load `assets/throwing-knife.glb` for the standby and embedded blades with the procedural mesh as fallback.
 4. Label ranked submissions with the display name server-side and add a friends-only filter to the leaderboard panel.
 5. Give the two reticle settings distinct behaviour (hold-to-preview only while the pointer is down).
+
+## Browser interference
+
+`browser-guard.js` (loaded from `index.html`) suppresses browser UI that gets in the way of play: the right-click context menu, the iOS long-press callout, copy / cut / paste, and page text selection. Text fields (inputs, textareas, selects, contenteditable) keep normal selection, context menu and clipboard behaviour.
