@@ -1,35 +1,31 @@
 /**
  * Blade Orbit — platform module.
- * StarHermit host adapter: launch-token lifecycle (fragment read, Bearer,
- * 45-min refresh), profile nickname resolution, server-time sync, own-server
- * score submission with replay envelope, platform leaderboard read, presence
- * heartbeats, telemetry consent. Fully offline-capable: every hosted feature
- * degrades to a local no-op when /api is absent.
- *
- * The platform opens the game as index.html#game_token=<jwt> (optional
- * &session_id=), stripped after the read. The JWT carries sub = user id and
- * game_scope = this game's slug — never hard-coded. Access/launch tokens are
- * never persisted to local storage.
+ * StarHermit side goes through window.StarHermit (starhermit-sdk.js, loaded
+ * first as a classic script): launch token + renewal, sign-in, profile
+ * nickname and avatar, platform leaderboard read, cloud save, settings KV,
+ * invite link and control bindings. Without a launch token none of these
+ * makes a request.
+ * Own-server use is limited to GET /api/v1/time, and only when signed in;
+ * standalone uses the local clock and makes no own-server request.
  */
 
-const TELEMETRY_WHITELIST = new Set(['start', 'tutorial_step', 'round_end', 'retry', 'settings_change', 'error']);
-const REFRESH_MS = 45 * 60 * 1000; // token lives 60 min; re-mint at 45
-const RETRY_MS = 60 * 1000;
+const SH = (typeof window !== 'undefined' && window.StarHermit) || null;
+// Read the launch fragment as early as possible (module evaluation, before main.js runs).
+if (SH && !SH.__boInit) { SH.init(); SH.__boInit = true; }
 
 export class Platform {
-  constructor() {
-    this.hosted = false;          // own-server /api reachable (time sync ok)
-    this.clockOffsetMs = 0;       // server - client
-    this.heartbeatTimer = null;
-    this.telemetryConsent = true; // anonymous funnel events only
-    this.scope = null;            // game slug from the JWT's game_scope
-    this.userId = null;           // JWT sub
-    this.token = null;            // launch token, memory only
-    this.profile = null;          // { displayName } for the signed-in player
-    this.profileNames = {};       // userId -> Promise<string> (cached)
-    this._refreshTimer = null;
-    this._retryTimer = null;
+  constructor(sh = SH) {
+    this.sh = sh;
+    this.clockOffsetMs = 0;       // server - client (signed in only)
+    this.profile = null;          // { displayName, userId } for the signed-in player
+    this._pushedSettings = null;  // last settings mirrored to the KV store
+    this._cloudReady = false;
   }
+
+  get tokenHosted() { return !!(this.sh && this.sh.signedIn); }
+  get token() { return this.tokenHosted ? this.sh.token : null; }
+  get userId() { return this.tokenHosted ? this.sh.userId : null; }
+  get scope() { return this.sh ? this.sh.slug : null; }
 
   _headers(extra = {}) {
     const h = { ...extra };
@@ -37,60 +33,12 @@ export class Platform {
     return h;
   }
 
-  _decodeJwt(t) {
-    try {
-      const seg = String(t).split('.')[1];
-      if (!seg) return null;
-      let b64 = seg.replace(/-/g, '+').replace(/_/g, '/');
-      b64 += '='.repeat((4 - (b64.length % 4)) % 4);
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      return JSON.parse(new TextDecoder().decode(bytes));
-    } catch {
-      return null;
-    }
-  }
-
-  // Fragment first (the platform contract); query forms are local-dev only.
-  _readLaunchToken() {
-    try {
-      const h = new URLSearchParams(String(location.hash || '').replace(/^#/, ''));
-      const t = h.get('game_token');
-      if (t) {
-        h.delete('game_token');
-        h.delete('session_id');
-        const rest = h.toString();
-        history.replaceState(null, '', location.pathname + location.search + (rest ? '#' + rest : ''));
-        return t;
-      }
-      const q = new URLSearchParams(location.search);
-      return q.get('game_token') || q.get('launch_token') || q.get('token') || null;
-    } catch {
-      return null;
-    }
-  }
-
   async init() {
-    this.token = this._readLaunchToken();
-    if (this.token) {
-      const claims = this._decodeJwt(this.token);
-      if (!claims) this.token = null; // malformed: treat as standalone
-      else {
-        if (typeof claims.sub === 'string' && claims.sub) this.userId = claims.sub;
-        if (typeof claims.game_scope === 'string' && claims.game_scope) this.scope = claims.game_scope;
-        if (!this.userId || !this.scope) this.token = null; // not a usable launch token
-      }
-    }
-    if (this.token) {
-      this._scheduleRefresh();
-      this.fetchProfile(); // nickname lands async via the profile chip listener
-    }
-
-    // Round-trip-adjusted time sync with the host.
+    // Round-trip-adjusted time sync — signed in only (launch token).
+    if (!this.tokenHosted) return this;
     try {
       const t0 = Date.now();
-      const res = await fetch('/api/v1/time', { cache: 'no-store' });
+      const res = await fetch('/api/v1/time', { cache: 'no-store', headers: this._headers() });
       if (!res.ok) throw new Error('no-time');
       const body = await res.json();
       const t1 = Date.now();
@@ -99,168 +47,103 @@ export class Platform {
       const serverMs = Number(body.now ?? body.serverTime ?? body.epochMs);
       if (!Number.isFinite(serverMs)) throw new Error('no-time');
       this.clockOffsetMs = serverMs + rtt / 2 - t1;
-      this.hosted = true;
     } catch {
-      this.hosted = false;
       this.clockOffsetMs = 0;
     }
     return this;
-  }
-
-  get tokenHosted() {
-    return !!this.token;
   }
 
   serverNow() {
     return new Date(Date.now() + this.clockOffsetMs);
   }
 
-  // ---------- token refresh (scoped tokens may re-mint) ----------
-
-  _scheduleRefresh() {
-    if (this._refreshTimer) clearInterval(this._refreshTimer);
-    this._refreshTimer = setInterval(() => this._refreshToken(), REFRESH_MS);
-  }
-
-  _refreshToken() {
-    if (!this.token || !this.scope) return Promise.resolve(false);
-    return this._api(`games/${encodeURIComponent(this.scope)}/launch-token`, {
-      method: 'POST',
-      body: '{}',
-    }).then((body) => {
-      if (body && typeof body.token === 'string' && body.token) {
-        this.token = body.token;
-        const claims = this._decodeJwt(this.token);
-        if (claims && claims.sub) this.userId = claims.sub;
-        if (claims && claims.game_scope) this.scope = claims.game_scope;
-        return true;
-      }
-      this._retryRefresh();
-      return false;
-    }).catch(() => {
-      this._retryRefresh();
-      return false;
-    });
-  }
-
-  _retryRefresh() {
-    if (this._retryTimer || !this.token) return;
-    this._retryTimer = setTimeout(() => {
-      this._retryTimer = null;
-      this._refreshToken();
-    }, RETRY_MS);
-  }
-
   // ---------- identity ----------
-  // Nickname via GET /api/v1/users/{id}/profile — the only profile read a
-  // game-scoped token may make. Never /api/v1/me, never usernames.
+  // Nickname via GET /api/v1/users/{id}/profile (SDK, cached). Never /api/v1/me.
   profileFor(userId) {
     if (!userId || typeof userId !== 'string') return Promise.resolve('player');
-    if (this.profileNames[userId]) return this.profileNames[userId];
-    const p = this._api(`users/${encodeURIComponent(userId)}/profile`)
-      .then((r) => {
-        const name = r && typeof r.nickname === 'string' && r.nickname ? r.nickname : null;
-        return name || ('Player ' + userId.slice(0, 8));
-      })
-      .catch(() => 'Player ' + userId.slice(0, 8));
-    this.profileNames[userId] = p;
-    return p;
+    const fallback = 'Player ' + userId.slice(0, 8);
+    if (!this.tokenHosted) return Promise.resolve(fallback);
+    return this.sh.profile(userId).then((p) => (p && p.nickname) || fallback, () => fallback);
   }
 
   // The signed-in player's display name, or null when anonymous.
   async fetchProfile() {
-    if (!this.userId) return null;
-    const displayName = (await this.profileFor(this.userId)).slice(0, 40);
-    this.profile = { displayName, userId: this.userId };
+    if (!this.tokenHosted) return null;
+    const p = await this.sh.profile();
+    if (!p) return null;
+    this.profile = { displayName: String(p.displayName).slice(0, 40), userId: this.userId };
     return this.profile;
   }
 
-  // ---------- own-server routes (game script backend; local dev + platform) ----------
+  /** Object URL of the signed-in player's avatar, or null. */
+  avatarUrl() { return this.tokenHosted ? this.sh.avatarUrl() : Promise.resolve(null); }
 
-  /** Submit a ranked score claim: replay envelope + components + checksum. */
-  async submitScore(envelope) {
-    if (!this.hosted) return { ok: false, reason: 'offline', label: 'casual' };
-    try {
-      const res = await fetch('/api/v1/scores', {
-        method: 'POST',
-        headers: this._headers({ 'content-type': 'application/json' }),
-        body: JSON.stringify(envelope),
-      });
-      if (res.status === 429) return { ok: false, reason: 'rate-limited', label: 'casual' };
-      const body = await res.json();
-      if (body.error) return { ok: false, reason: body.error, label: 'casual' };
-      return { ok: true, rank: body.rank, label: 'ranked' };
-    } catch {
-      return { ok: false, reason: 'network', label: 'casual' };
+  // ---------- sign-in, invite, auth state ----------
+  canSignIn() { return !!(this.sh && this.sh.canSignIn()); }
+  signIn() { return !!(this.sh && this.sh.signIn()); }
+  inviteLink() { return this.tokenHosted ? this.sh.inviteLink() : null; }
+  /** fn({ signedIn, reason }) whenever the StarHermit session changes. */
+  onAuth(fn) {
+    if (!this.sh) return () => {};
+    return this.sh.on('auth', (a) => {
+      if (!a.signedIn) { this.profile = null; this._cloudReady = false; this._pushedSettings = null; }
+      fn(a);
+    });
+  }
+
+  // ---------- cloud save + settings KV + controls ----------
+  /** Signed-in start: { remote, settings, bindings } or null standalone. */
+  async loadAccount(keyDefaults) {
+    if (!this.tokenHosted) return null;
+    const [remote, settings, bindings] = await Promise.all([
+      this.sh.loadJSON(), this.sh.getSettings(), this.sh.loadBindings(keyDefaults),
+    ]);
+    this._cloudReady = true;
+    this._pushedSettings = JSON.parse(JSON.stringify(settings || {}));
+    return { remote, settings: settings || {}, bindings };
+  }
+
+  /** Debounced cloud save of the progress document (after loadAccount). */
+  saveCloud(doc) {
+    if (!this.tokenHosted || !this._cloudReady) return false;
+    this.sh.saveJSON(doc);
+    return true;
+  }
+
+  flushCloud() { return this.tokenHosted ? this.sh.flushSave(true) : Promise.resolve(false); }
+
+  /** PATCH the settings keys that changed since the last mirror. */
+  mirrorSettings(s) {
+    if (!this.tokenHosted || !this._pushedSettings) return null;
+    const patch = {};
+    for (const k of Object.keys(s)) {
+      if (JSON.stringify(s[k]) !== JSON.stringify(this._pushedSettings[k])) patch[k] = s[k];
     }
+    this._pushedSettings = JSON.parse(JSON.stringify(s));
+    return Object.keys(patch).length ? this.sh.patchSettings(patch) : null;
   }
 
   // ---------- platform leaderboard (read-only; clients never submit) ----------
 
   /**
-   * Read the game's leaderboard through the platform: the game record yields
-   * leaderboardId, entries come from the leaderboards route, and user ids
-   * resolve to profile nicknames. No leaderboardId (or no token/host) →
-   * { ok: false } and the UI shows local bests only.
+   * Read the game's first platform leaderboard; user ids resolve to profile
+   * nicknames. No board (or no token) → { ok: false } and the UI explains.
    */
   async fetchLeaderboard({ friendsOnly = false, page = 1, pageSize = 20 } = {}) {
-    if (!this.token || !this.scope) return { ok: false, entries: [], label: 'casual' };
+    if (!this.tokenHosted) return { ok: false, entries: [], label: 'casual' };
     try {
-      const game = await this._api(`games/${encodeURIComponent(this.scope)}`);
-      const leaderboardId = game && game.leaderboardId;
-      if (!leaderboardId) return { ok: false, entries: [], label: 'casual', reason: 'no-leaderboard' };
-      const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
-      if (friendsOnly) qs.set('friendsOnly', 'true');
-      const body = await this._api(`leaderboards/${encodeURIComponent(leaderboardId)}/entries?${qs.toString()}`);
-      const raw = (body && (body.entries || body.items)) || [];
+      const r = await this.sh.leaderboard(null, { page, pageSize, scope: friendsOnly ? 'friends' : undefined });
+      if (!r.board) return { ok: false, entries: [], label: 'casual', reason: 'no-leaderboard' };
+      const raw = r.items || r.entries || [];
       const entries = await Promise.all(raw.map(async (e) => ({
         rank: e.rank,
         score: e.score ?? e.value,
         userId: e.userId ?? e.playerId ?? null,
-        name: await this.profileFor(e.userId ?? e.playerId ?? ''),
+        name: e.nickname || await this.profileFor(e.userId ?? e.playerId ?? ''),
       })));
       return { ok: true, entries, label: 'ranked' };
     } catch {
       return { ok: false, entries: [], label: 'casual' };
     }
-  }
-
-  // ---------- generic JSON GET (throws on transport/HTTP errors) ----------
-
-  async _api(path) {
-    const res = await fetch(`/api/v1/${path}`, { headers: this._headers({ accept: 'application/json' }) });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) throw new Error((body && body.error) || `http-${res.status}`);
-    return body;
-  }
-
-  // ---------- presence + telemetry (own-server routes) ----------
-
-  /** Throttled presence heartbeat while actively playing. */
-  startPresence() {
-    if (!this.hosted || this.heartbeatTimer) return;
-    const beat = () => fetch('/api/v1/presence', { method: 'POST', headers: this._headers(), body: '{}' }).catch(() => {});
-    beat();
-    this.heartbeatTimer = setInterval(beat, 45000);
-  }
-
-  stopPresence() {
-    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
-    this.heartbeatTimer = null;
-  }
-
-  /** Anonymous funnel telemetry — whitelisted events, no raw text or trails. */
-  track(event, detail = {}) {
-    if (!this.telemetryConsent || !TELEMETRY_WHITELIST.has(event)) return;
-    if (!this.hosted) return;
-    const safe = {};
-    for (const k of ['mode', 'tier', 'result', 'category']) {
-      if (typeof detail[k] === 'string' && detail[k].length < 40) safe[k] = detail[k];
-    }
-    fetch('/api/v1/telemetry', {
-      method: 'POST',
-      headers: this._headers({ 'content-type': 'application/json' }),
-      body: JSON.stringify({ event, detail: safe, ts: Date.now() }),
-    }).catch(() => {});
   }
 }

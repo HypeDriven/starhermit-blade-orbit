@@ -365,6 +365,27 @@ class UI {
     el.textContent = text;
   }
 
+  /** Short confirmation toast (account actions). */
+  toast(text) {
+    let el = $('toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast'; el.className = 'toast'; el.setAttribute('role', 'status');
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.hidden = false;
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+  }
+
+  /** Profile chip avatar (object URL) — hidden when null. */
+  setProfileAvatar(url) {
+    const img = $('profile-avatar');
+    if (!img) return;
+    if (url) { img.src = url; img.hidden = false; } else { img.removeAttribute('src'); img.hidden = true; }
+  }
+
   caption(text) {
     const el = $('captions');
     el.textContent = text;
@@ -427,7 +448,7 @@ class UI {
 
   // --- help -----------------------------------------------------------------
 
-  buildHelp() {
+  buildHelp(keys = null) {
     const cards = [
       { title: 'The wheel turns', body: 'The timber target spins and surges. The marked notch at six o\'clock is where your blade lands.' },
       { title: 'Throw into gaps', body: 'Tap, click, or press SPACE to throw. The blade sticks where the wheel is at that instant.' },
@@ -446,12 +467,13 @@ class UI {
       el.querySelector('p').textContent = c.body;
       host.appendChild(el);
     }
+    const k = (a, fallback) => (keys && keys[a]) || fallback;
     const controls = [
-      ['SPACE / ENTER / tap', 'Throw blade'],
-      ['P or ESC', 'Pause / resume'],
-      ['U', 'Undo (practice & tutorials)'],
-      ['H', 'Hint (practice & tutorials)'],
-      ['R', 'Restart stage (practice)'],
+      [k('throw', 'SPACE / ENTER') + ' / tap', 'Throw blade'],
+      [k('pause', 'P') + ' or ESC', 'Pause / resume'],
+      [k('undo', 'U'), 'Undo (practice & tutorials)'],
+      [k('hint', 'H'), 'Hint (practice & tutorials)'],
+      [k('restart', 'R'), 'Restart stage (practice)'],
       ['TAB / SHIFT+TAB', 'Navigate controls'],
       ['Gamepad: A throw · Start pause · B back', ''],
     ];

@@ -74,7 +74,8 @@ button, input, select { font: inherit; }
 .game-title { font-size: 1.15rem; margin: 0; letter-spacing: 0.06em; color: var(--accent-2); }
 .server-clock { font-variant-numeric: tabular-nums; color: var(--ink-dim); font-size: 0.85rem; }
 .topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
-.profile-chip { color: var(--ink-dim); font-size: 0.9rem; }
+.profile-chip { color: var(--ink-dim); font-size: 0.9rem; display: inline-flex; align-items: center; gap: 6px; }
+.profile-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
 
 /* Narrow screens: wrap the top bar so all controls stay inside the viewport */
 @media (max-width: 560px) {
@@ -408,3 +409,8 @@ body[data-contrast="high"] #screen-title { background: #000000e6; }
   .captions { transition: none; }
 }
 body[data-motion="reduced"] * { transition: none !important; animation: none !important; }
+
+/* StarHermit account toast */
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 60;
+  max-width: calc(100vw - 32px); padding: 10px 16px; background: var(--panel, #1d1a17); color: var(--ink, #f3ead8);
+  border: 1px solid var(--accent, #e0a050); border-radius: 8px; font-size: 0.95rem; text-align: center; overflow-wrap: anywhere; }

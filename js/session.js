@@ -172,9 +172,36 @@ function save(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch { /* storage full or blocked — non-fatal */ }
+  if (typeof store.onPersist === 'function') {
+    try { store.onPersist(key); } catch { /* hooks never break persistence */ }
+  }
 }
 
+// Keys that make up the cloud-saved progress document.
+const CLOUD_KEYS = ['progression', 'scores', 'achievements'];
+
 export const store = {
+  /** Optional hook (main.js): called with the localStorage key after each write. */
+  onPersist: null,
+  isCloudKey(key) { return CLOUD_KEYS.some((k) => LS_KEYS[k] === key); },
+  isSettingsKey(key) { return key === LS_KEYS.settings; },
+  /** The persistent progress document mirrored to the StarHermit cloud save. */
+  exportCloud() {
+    const doc = { v: 1 };
+    for (const k of CLOUD_KEYS) doc[k] = load(LS_KEYS[k], null);
+    return doc;
+  },
+  /** Adopt a cloud document (remote wins); returns true when applied. */
+  importCloud(doc) {
+    if (!doc || doc.v !== 1) return false;
+    for (const k of CLOUD_KEYS) {
+      if (doc[k] && typeof doc[k] === 'object') {
+        try { localStorage.setItem(LS_KEYS[k], JSON.stringify(doc[k])); } catch { /* non-fatal */ }
+      }
+    }
+    return true;
+  },
+
   getSettings() {
     return {
       music: 0.7, effects: 0.9, ambience: 0.5, voice: 0.8,

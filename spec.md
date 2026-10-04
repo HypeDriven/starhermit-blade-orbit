@@ -32,8 +32,8 @@ listed once, at the end, under "Design intent not yet implemented".
 | `js/gfx-i18n.js` | Graphics-section strings in nine locales, `pickLocale`, `gfxText` |
 | `js/ui.js` | Screens, HUD, setup/results rendering, help cards, settings binding (including the Graphics section), accessibility mirrors |
 | `js/audio.js` | WebAudio buses, authored Opus samples with synth fallback, ambience loops, generative music, captions |
-| `js/platform.js` | StarHermit adapter: time sync, score submission, presence, telemetry; offline no-ops |
-| `server.js` | Static server + `/api/v1/*`: time, daily id, replay-validated daily leaderboard, presence, telemetry sink |
+| `js/platform.js` | StarHermit adapter: signed-in time sync, account, read-only platform leaderboard; standalone makes no request |
+| `server.js` | Static server + `/api/v1/*`: time, daily id, replay-validated daily leaderboard, presence, telemetry sink (the client calls only `time`, and only when signed in) |
 | `sfx/` | 17 Opus clips, `manifest.txt` (canonical), `manifest.json` (generator input), `manifest.md` (generator output) |
 | `assets/` | `title-backdrop.webp` (title key art), `throwing-knife.glb` (hero prop model, not yet wired) |
 | `coverart.png`, `icon.png`, `favicon.svg` | Store cover (1200x675), 256 px icon, tab icon |
@@ -156,7 +156,7 @@ else 1. Mastery XP gains `10 * tier + 5 * stars`.
 | Mode | Entry | Content | Undo / hint | Rated |
 |---|---|---|---|---|
 | Journey | Title > Journey, or Play > Journey | 40 stages, 5 tiers x 8, stage 8 of each tier is a Mastery trial | No | Local stars |
-| Daily Challenge | Title or Play > Daily | `dailyContent(date)`: one seed per UTC day | No | Ranked (server board) |
+| Daily Challenge | Title or Play > Daily | `dailyContent(date)`: one seed per UTC day | No | Ranked (platform board, read-only) |
 | Practice | Play > Practice > Easy/Normal/Hard/Expert/Master | `practiceContent`: tier 1-5, fresh random seed each time | Yes, plus Restart | No |
 | Challenges | Play > Challenges | Flawless Edge, Ember Sprint, Thicket of Steel, Warden's Trial | No | No |
 | Learn | Title > Learn to Play, or Play > Learn | 4 lessons with two-step banners | Yes | No |
@@ -350,15 +350,19 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=serv
 
 | Feature | Status |
 |---|---|
-| Launch token | `Platform.init` reads `#game_token=<jwt>` from the URL fragment (optional `&session_id=`, stripped after the read; query `?launch_token=` kept for local dev), decodes `sub` + `game_scope` (never hard-coded), sends it as `Authorization: Bearer` on every `/api` call, and re-mints it every 45 min via `POST /api/v1/games/{slug}/launch-token` (60 s retry on failure). Memory only; nothing is persisted |
-| Identity | The top-bar chip shows the profile nickname from `GET /api/v1/users/{sub}/profile` (never `/api/v1/me`, never usernames; `Player <id8>` fallback); "Guest" remains the offline label |
-| Platform leaderboard | Read-only via `GET /api/v1/games/{slug}` → `leaderboardId` → `GET /api/v1/leaderboards/{leaderboardId}/entries?page=&pageSize=`, with user ids resolved to nicknames through the profile helper; shown on the title-screen Leaderboards panel. Clients never submit to game leaderboards (wiki); no `leaderboardId` or no token → panel says boards are unavailable |
-| Server time | `GET /api/v1/time` with round-trip-adjusted offset; drives the top-bar clock and the daily seed |
-| Daily board | `POST /api/v1/scores` with the replay envelope; the server regenerates today's content, requires the submitted content to be canonically identical, re-runs `verifyReplay`, rejects implausible losing totals, ranks with `compareResults`, dedupes by session id. `GET /api/v1/scores/:id` returns the top 50 |
-| Presence | `POST /api/v1/presence` every 45 s while a round is live |
-| Telemetry | `POST /api/v1/telemetry` for whitelisted events (start, tutorial_step, round_end, retry, settings_change, error) with short string fields only |
-| Offline | Every hosted call degrades to a local no-op; scores are kept locally and labelled casual |
-| Not used | Friends filtering, cloud saves, platform achievements, rooms, WebSocket, chat, voice |
+| SDK | `starhermit-sdk.js` (verbatim copy of the canonical client) loads as a classic script before `js/main.js`; `js/platform.js` calls `StarHermit.init()` during module evaluation and wraps the SDK in the `Platform` class. Without a token no StarHermit request is made |
+| Launch token | The SDK reads `#game_token=<jwt>[&session_id=]` or a sign-in return `#access_token=…`, strips it, takes the slug from `game_scope` (never hard-coded) and renews via `POST /api/v1/games/{slug}/launch-token`. The current token also rides as `Authorization: Bearer` on `GET /api/v1/time`. If renewal is refused the chip returns to "Guest", the sign-in/invite buttons update and a toast says "Signed out of StarHermit — progress stays on this device."; play continues locally. Nothing is persisted |
+| Sign-in | On `*.starhermit.com` without a token the title menu shows **Sign in with StarHermit** (`StarHermit.signIn()`); hidden when signed in and locally |
+| Identity | The top-bar chip shows the profile nickname (`GET /api/v1/users/{sub}/profile`, never `/api/v1/me`; `Player <id8>` fallback) and the account avatar (`/avatar`); "Guest" without an avatar remains the offline label |
+| Cloud save | Progression, best scores and achievements (`{ v: 1, progression, scores, achievements }`) mirror to `/api/v1/me/cloud-saves/game:{slug}`. On start a remote copy wins over localStorage, otherwise this device seeds the slot; every write of those keys queues a debounced upload, flushed on `pagehide`/hidden. Settings, snapshots and replays stay local |
+| Settings KV | Every settings save sends the changed keys (volumes, quality and graphics overrides, reduced motion, contrast, palette, text scale, handedness, hold-to-aim, timing assist, haptics, captions, camera) with `PATCH /api/v1/games/{slug}/settings`; on start the platform's values override local ones |
+| Invite | When signed in the title menu shows **Invite a friend**, which copies `StarHermit.inviteLink()` and confirms with a toast (the link is shown if the clipboard is blocked) |
+| Controls | `starhermit.txt` declares `control.throw`, `pause`, `back`, `undo`, `hint`, `restart`; keydown routes by `event.code` through `StarHermit.loadBindings` (defaults standalone) and the Help controls list shows the effective keys |
+| Strings | Sign-in, invite, toast and sign-out texts exist in all nine locales (`ACCOUNT_STRINGS` in `js/gfx-i18n.js`) |
+| Platform leaderboard | Read-only via the SDK (`GET /api/v1/games/{slug}/leaderboards` → first board → `GET /api/v1/leaderboards/{id}/entries?page=&pageSize=`), user ids resolved to nicknames; shown on the title-screen Leaderboards panel. Clients never submit to game leaderboards; no board or no token → the panel says boards are unavailable |
+| Server time | `GET /api/v1/time` with round-trip-adjusted offset, only when signed in; drives the top-bar clock and the daily seed |
+| Standalone | No launch token: no same-origin `/api` or `/ws` request at all; the local clock drives the clock and daily seed, scores and replays stay in localStorage |
+| Not used | The `server.js` score, presence and telemetry routes (no score submission, presence or telemetry); platform achievements (none declared — `server.js` is an HTTP host, not a platform script reporting `achievements`; unlocks stay local), platform sessions/matchmaking/session invites/chat/replays (single-player), friends filtering, rooms, WebSocket, voice |
 
 ## 13. Technical architecture
 
@@ -375,14 +379,14 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=serv
   (paused round), `:replay:<contentId>:<sessionId>`. Snapshots are only offered when the stage can be rebuilt.
 - Budgets: 60 fps target; Low (Auto on software GPUs) is DPR 1, no shadows, no post chain, 80 particles. The base stage is about 20 draw calls
   plus three per blade and two per sigil; particles are individual meshes, so a win burst briefly adds up to 130.
-- `tests/e2e.mjs` spawns `server.js` on an ephemeral (or `PORT`) port, launches headless Chrome via `playwright-core`,
+- `tests/e2e.mjs` spawns `server.js` on an ephemeral (or `PORT`) port as a static host, fails if the page requests any same-origin `/api` or `/ws` path, launches headless Chrome via `playwright-core`,
   clicks the real buttons, reads `window.__game` only to time throws with the hint API and to read state, and fails on
   any page error, console error or console warning; it also drives the Graphics section at desktop and mobile
   (Low → High, a bloom override, reload persistence, preset-clears-overrides, no horizontal cut-off).
 
 ## 14. Testing and acceptance criteria
 
-`npm test` (`tests/rules.test.mjs`, 19 tests): legal actions; deterministic rotation; every rejection reason; scoring
+`npm test` also runs `tests/gfx.test.mjs` and `tests/platform.test.mjs` (StarHermit adapter in a sandbox with a stubbed `fetch`: no requests standalone; token read and fragment stripped; nickname; settings patch of changed keys; cloud-save round trip through `game:<slug>`; control overrides; leaderboard read; sign-out on refused renewal; account strings in all nine locales). `tests/rules.test.mjs` (19 tests): legal actions; deterministic rotation; every rejection reason; scoring
 components; the three loss reasons; serialization round-trip and version guard; replay determinism across all shipped
 stages; tamper detection; all content validates (Journey, tutorials, challenges, 14 upcoming dailies); generator
 determinism and difficulty scaling; daily stability per UTC day; practice validity; malformed-command fuzz; bot
@@ -392,7 +396,7 @@ rejection integrity.
 `tests/e2e.mjs` (13 steps): title loads; Journey grid has 40 cells with 1 unlocked; briefing; countdown to active with
 HUD visible; rules-timed throws to a terminal state; results breakdown rows; persisted progression and unlock; next
 stage, pause snapshot, resume; practice undo and hint; settings apply reduced motion, palette, contrast; tutorial banner;
-390 x 844 portrait with a >= 44 px THROW button; daily submission appears on the server board. Passes with "E2E PASS —
+390 x 844 portrait with a >= 44 px THROW button; the daily result is recorded locally with no `/api` or `/ws` request. Passes with "E2E PASS —
 no page errors".
 
 QA bar (checkable): every implemented feature reachable by clicking visible UI; zero console errors or warnings from the
@@ -415,18 +419,16 @@ banners, help cards) before the first mechanic; `node --check` clean on all JS; 
 
 ## 16. Known limitations
 
-- No localization layer; English literals throughout except the Graphics settings section (section 10), which follows
+- No localization layer; English literals throughout except the Graphics settings section (section 10) and the StarHermit account strings, which follow
   the browser language and so can differ from the rest of the English UI.
 - The platform leaderboard shows the ranked top 20 on the title-screen panel, but the player's own rank is not
-  highlighted there and the daily board on the results screen still only announces submission success or failure.
+  highlighted there; daily results are not submitted anywhere.
 - Offline play shows "Guest" in the top-bar chip; the account nickname appears only when launched with a token.
 - "Hold-to-preview reticle" and "Timing assist reticle" are two settings with the same effect.
 - The voice bus has a slider but no content plays through it.
 - Audio is unverified in automation (headless Chrome has no output device); only construction is exercised.
 - `compareResults` falls back to `localeCompare` for session ids; ids are ASCII base36 so collations agree, but the
   comparator is locale-dependent in principle (`knownissues.md`).
-- The server regenerates the daily per request from wall-clock UTC; there is no mechanism to exclude a defective day
-  from ranking, and rollover is not tested.
 - The hero knife model is shipped but the in-game blade is still the procedural mesh.
 
 ## Design intent not yet implemented
@@ -434,7 +436,7 @@ banners, help cards) before the first mechanic; `node --check` clean on all JS; 
 1. Ship string tables and a locale selector for en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT.
 2. Show the daily board (global top 50 and the player's rank) on the results screen and the briefing, and highlight the player's own row on the platform leaderboard panel.
 3. Load `assets/throwing-knife.glb` for the standby and embedded blades with the procedural mesh as fallback.
-4. Label ranked submissions with the display name server-side and add a friends-only filter to the leaderboard panel.
+4. Add a friends-only filter to the leaderboard panel.
 5. Give the two reticle settings distinct behaviour (hold-to-preview only while the pointer is down).
 
 ## Browser interference

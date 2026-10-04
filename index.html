@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="css/main.css" />
   <script type="importmap">{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }</script>
 <script src="browser-guard.js"></script>
+<script src="starhermit-sdk.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to game</a>
@@ -19,7 +20,7 @@
       <h1 class="game-title">Blade&nbsp;Orbit</h1>
       <div id="server-clock" class="server-clock" title="Platform-synchronized time" aria-label="Server time"></div>
       <div class="topbar-actions">
-        <span id="profile-chip" class="profile-chip">Guest</span>
+        <span class="profile-chip"><img id="profile-avatar" class="profile-avatar" alt="" width="24" height="24" hidden><span id="profile-chip">Guest</span></span>
         <button id="btn-help-top" class="btn btn-ghost" type="button">Help</button>
         <button id="btn-settings-top" class="btn btn-ghost" type="button">Settings</button>
       </div>
@@ -108,6 +109,8 @@
             <button id="btn-journey" class="btn" type="button">Journey</button>
             <button id="btn-tutorial" class="btn" type="button">Learn to Play</button>
             <button id="btn-title-settings" class="btn" type="button">Settings</button>
+            <button id="btn-invite" class="btn" type="button" hidden>Invite a friend</button>
+            <button id="btn-sign-in" class="btn" type="button" hidden>Sign in with StarHermit</button>
           </div>
           <p id="title-progress" class="title-progress"></p>
         </div>

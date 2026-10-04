@@ -16,6 +16,15 @@ import { normalizePreset, CATEGORIES } from './gfx.js';
 import { createUI } from './ui.js';
 import { AudioEngine } from './audio.js';
 import { Platform } from './platform.js';
+import { accountText, pickLocale } from './gfx-i18n.js';
+
+// Keyboard actions by KeyboardEvent.code (control.* in starhermit.txt);
+// a signed-in player's StarHermit overrides replace these at boot.
+const KEY_DEFAULTS = {
+  throw: ['Space', 'Enter', 'NumpadEnter'], pause: ['KeyP'], back: ['Escape'],
+  undo: ['KeyU'], hint: ['KeyH'], restart: ['KeyR'],
+};
+const ACCOUNT = accountText(pickLocale(typeof navigator !== 'undefined' ? (navigator.languages || [navigator.language]) : []));
 
 const TICK_MS = 1000 / SIM_FPS;
 const RESOLVE_LOCK_MS = 140;   // shortest non-interruptible resolution window
@@ -26,12 +35,13 @@ class Game {
     this.phase = 'boot'; // boot|title|modes|journey|setup|countdown|active|paused|resolving|results
     this.session = null;
     this.pendingContent = null;
-    this.pendingRanked = false;
     this.settings = store.getSettings();
     this.settings.quality = normalizePreset(this.settings.quality); // legacy 'medium' → 'balanced'
     this.settings.graphics = { ...(this.settings.graphics || {}) };
     this.progression = store.getProgression();
     this.platform = new Platform();
+    this.keyBindings = structuredClone(KEY_DEFAULTS);
+    this.signedOutNotice = false;
     this.inputLocked = false;
     this.overlayPaused = false; // set when Help/Settings auto-paused a live round
     this.accumulator = 0;
@@ -68,13 +78,15 @@ class Game {
     if (!report.ok) console.warn('Content validation failures:', report.failures);
 
     await this.platform.init();
+    await this.initAccount();
     this.ui.applySettingsToDom(this.settings);
-    this.ui.buildHelp();
+    this.ui.buildHelp(this.keyLabels());
     this.ui.setProfileChip('Guest');
-    // Hosted: the account nickname replaces the guest chip when it resolves.
+    // Hosted: the account nickname and avatar replace the guest chip when they resolve.
     this.platform.fetchProfile().then((p) => {
       if (p) this.ui.setProfileChip(p.displayName);
     });
+    this.platform.avatarUrl().then((url) => this.ui.setProfileAvatar(url));
 
     // clock display (platform-synchronized where hosted)
     setInterval(() => {
@@ -99,6 +111,69 @@ class Game {
     this.bindInput();
     this.lastFrame = performance.now();
     requestAnimationFrame((t) => this.frame(t));
+  }
+
+  // --- StarHermit account ----------------------------------------------------
+
+  /** Remote-first progress, platform settings, key bindings, account buttons. */
+  async initAccount() {
+    const P = this.platform;
+    store.onPersist = (key) => {
+      if (store.isCloudKey(key)) P.saveCloud(store.exportCloud());
+      else if (store.isSettingsKey(key)) P.mirrorSettings(this.settings);
+    };
+    P.onAuth((a) => {
+      if (!a.signedIn) {
+        this.signedOutNotice = true;
+        this.ui.setProfileChip('Guest');
+        this.ui.setProfileAvatar(null);
+        this.ui.toast(ACCOUNT.signedOut);
+      }
+      this.refreshAccountButtons();
+    });
+    document.getElementById('btn-sign-in').addEventListener('click', () => P.signIn());
+    document.getElementById('btn-invite').addEventListener('click', () => this.copyInvite());
+    this.refreshAccountButtons();
+    const acc = await P.loadAccount(KEY_DEFAULTS).catch(() => null);
+    if (!acc) return;
+    if (acc.remote && store.importCloud(acc.remote)) this.progression = store.getProgression();
+    else P.saveCloud(store.exportCloud()); // seed the slot from this device
+    for (const k of Object.keys(store.getSettings())) if (k in acc.settings) this.settings[k] = acc.settings[k];
+    store.saveSettings(this.settings); // platform values win; seeds keys it lacks
+    this.audio.settings = this.settings;
+    this.audio.applyVolumes();
+    this.keyBindings = acc.bindings;
+    window.addEventListener('pagehide', () => P.flushCloud());
+    document.addEventListener('visibilitychange', () => { if (document.hidden) P.flushCloud(); });
+  }
+
+  refreshAccountButtons() {
+    const si = document.getElementById('btn-sign-in');
+    const inv = document.getElementById('btn-invite');
+    si.textContent = ACCOUNT.signIn;
+    si.hidden = !this.platform.canSignIn();
+    inv.textContent = ACCOUNT.invite;
+    inv.hidden = !this.platform.tokenHosted;
+  }
+
+  async copyInvite() {
+    const link = this.platform.inviteLink();
+    if (!link) return;
+    try { await navigator.clipboard.writeText(link); this.ui.toast(ACCOUNT.inviteCopied); }
+    catch { this.ui.toast(`${ACCOUNT.inviteFailed} ${link}`); }
+  }
+
+  actionFor(code) {
+    for (const [a, codes] of Object.entries(this.keyBindings)) if (codes.includes(code)) return a;
+    return null;
+  }
+
+  /** Display labels of the effective bindings for the Help controls list. */
+  keyLabels() {
+    const name = (c) => ({ Space: 'SPACE', Enter: 'ENTER', NumpadEnter: 'NUM ENTER', Escape: 'ESC' }[c] || c.replace(/^Key/, '').replace(/^Digit/, ''));
+    const out = {};
+    for (const [a, codes] of Object.entries(this.keyBindings)) out[a] = codes.map(name).join(' / ');
+    return out;
   }
 
   // --- menus ----------------------------------------------------------------
@@ -156,7 +231,6 @@ class Game {
 
   prepareContent(content, { ranked = false } = {}) {
     this.pendingContent = content;
-    this.pendingRanked = ranked;
     const secs = Math.round(content.par.ticks / SIM_FPS);
     this.ui.showSetup(content, {
       ranked,
@@ -173,8 +247,6 @@ class Game {
     this.session = new Session(content, { allowUndo });
     this.progression.sessionsPlayed += 1;
     store.saveProgression(this.progression);
-    this.platform.track('start', { mode: content.kind, tier: String(content.tier || 0) });
-    this.platform.startPresence();
 
     if (this.renderer) {
       this.renderer.loadContent(content, content.theme);
@@ -195,7 +267,6 @@ class Game {
     if (content.kind === 'tutorial') {
       this.tutorialStep = 0;
       this.ui.showTutorialBanner(content.steps[0]);
-      this.platform.track('tutorial_step', { mode: content.id });
     }
 
     this.phase = 'countdown';
@@ -318,16 +389,7 @@ class Game {
     store.saveReplay(`${content.id}:${this.session.sessionId}`, this.session.replayEnvelope());
     store.clearSnapshot();
 
-    this.platform.track('round_end', { mode: content.kind, result: report.won ? 'won' : 'lost' });
-    this.platform.stopPresence();
     this.audio.stopMusic();
-
-    // ranked submission with replay envelope (daily board)
-    if (this.pendingRanked && content.kind === 'daily') {
-      this.platform.submitScore(this.session.replayEnvelope()).then((res) => {
-        if (!res.ok) this.ui.announce(`Score recorded locally (${res.reason}); board unavailable.`);
-      });
-    }
 
     if (achievements.length) this.audio.event('achievement');
     this.ui.showResults(report, { achievements, isBest, nextStage, best });
@@ -362,7 +424,6 @@ class Game {
     this.phase = 'title';
     this.audio.stopMusic();
     this.audio.stopAmbience();
-    this.platform.stopPresence();
     this.ui.showTutorialBanner(null);
     this.ui.refreshGraphics();
     this.buildMenus();
@@ -390,19 +451,19 @@ class Game {
       if (e.repeat) return;
       this.audio.start();
       const inControl = !!e.target.closest?.('button, input, select, textarea, a');
-      const key = e.key.toLowerCase();
-      if ((key === ' ' || key === 'enter') && !inControl && this.phase === 'active') {
+      const act = this.actionFor(e.code);
+      if (act === 'throw' && !inControl && this.phase === 'active') {
         e.preventDefault();
         this.doThrow();
-      } else if (key === 'p') {
+      } else if (act === 'pause') {
         this.phase === 'paused' ? this.resume() : this.pause();
-      } else if (key === 'escape') {
+      } else if (act === 'back') {
         if (this.phase === 'paused') this.resume();
         else if (this.phase === 'active') this.pause();
         else if (this.ui.currentScreen && this.ui.currentScreen !== 'title') this.ui.showScreen('title');
-      } else if (key === 'u' && this.phase === 'active') this.onAction('undo');
-      else if (key === 'h' && this.phase === 'active') this.onAction('hint');
-      else if (key === 'r' && this.phase === 'active' && this.session?.content.kind === 'practice') this.onAction('restart');
+      } else if (act === 'undo' && this.phase === 'active') this.onAction('undo');
+      else if (act === 'hint' && this.phase === 'active') this.onAction('hint');
+      else if (act === 'restart' && this.phase === 'active' && this.session?.content.kind === 'practice') this.onAction('restart');
     });
 
     document.addEventListener('visibilitychange', () => {
@@ -573,7 +634,6 @@ class Game {
     }
     this.audio.startAmbience(themeById(content.theme).ambience);
     this.audio.startMusic(content.tier ? Math.min(1, content.tier / 6) : 0.2);
-    this.platform.startPresence();
     this.ui.setPlayingChrome(true);
     this.ui.showScreen(null);
     this.ui.buildRailActions(this.railActions(content));
@@ -611,7 +671,6 @@ class Game {
       this.ui.refreshGraphics();
     }
     if (key === 'reducedMotion') this.renderer?.setReducedMotion(!!value);
-    this.platform.track('settings_change', { category: key });
   }
 
   applyQuality() {

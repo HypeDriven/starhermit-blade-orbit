@@ -62,6 +62,13 @@ page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${currentStep}] console ${m.type()}: ${m.text()}`); });
 
 let currentStep = 'startup';
+// Standalone (no launch token): no same-origin /api or /ws request, ever.
+const ownServerHits = [];
+const watchOwnServer = (p) => p.on('request', (r) => {
+  const u = new URL(r.url());
+  if (u.origin === new URL(BASE).origin && /^\/(api|ws)(\/|$)/.test(u.pathname)) ownServerHits.push(u.pathname);
+});
+watchOwnServer(page);
 const step = async (name, fn) => {
   currentStep = name;
   await fn();
@@ -215,8 +222,8 @@ await step('mobile portrait layout (390x844)', async () => {
   if (box.width < 44 || box.height < 44) throw new Error('throw target too small on mobile');
 });
 
-await step('daily score submission validates against server', async () => {
-  // finish the daily via rules-driven play, then confirm ranked submission happened
+await step('daily result recorded locally, no score submission', async () => {
+  // finish the daily via rules-driven play; the result stays on the device
   for (let i = 0; i < 40; i++) {
     const st = await page.evaluate(() => window.__game.session?.state.status);
     if (st !== 'active') break;
@@ -226,13 +233,8 @@ await step('daily score submission validates against server', async () => {
     await page.waitForTimeout(180);
   }
   await page.waitForFunction(() => window.__game.phase === 'results', null, { timeout: 8000 });
-  const status = await page.evaluate(async () => {
-    const res = await fetch(`/api/v1/scores/${encodeURIComponent(window.__game.session.content.id)}`);
-    const body = await res.json();
-    return body.entries?.length ?? -1;
-  });
-  console.log('  daily board entries:', status);
-  if (status < 1) throw new Error('score not on board');
+  const recorded = await page.evaluate(() => window.__game.progression.dailyDone[window.__game.session.content.id]);
+  if (typeof recorded !== 'number') throw new Error('daily result not recorded locally');
 });
 
 /* Graphics settings through the visible UI: preset switch, one override, persistence
@@ -295,6 +297,7 @@ await step('graphics settings: desktop (1280x800)', async () => {
 await step('graphics settings: mobile (390x844, touch)', async () => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   const mp = await ctx.newPage();
+  watchOwnServer(mp);
   mp.on('pageerror', (e) => errors.push(`mobile pageerror: ${e.message}`));
   mp.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`mobile console ${m.type()}: ${m.text()}`); });
   await graphicsFlow(mp, 'mobile');
@@ -302,6 +305,7 @@ await step('graphics settings: mobile (390x844, touch)', async () => {
 });
 
 await browser.close();
+if (ownServerHits.length) errors.push('own-server requests while standalone: ' + ownServerHits.join(', '));
 if (serverChild) {
   serverChild.kill();
   await new Promise((r) => serverChild.once('exit', r));
