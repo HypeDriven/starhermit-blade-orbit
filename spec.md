@@ -230,7 +230,10 @@ on Back; from the pause panel they return to the pause panel.
 Layouts (`css/main.css`): >= 1024 px shows a 240 px objective rail left and an actions/status rail right of the
 playfield; below that the rails collapse; landscape phones (height <= 500) keep a 150 px status rail; portrait phones
 put the THROW button in the thumb zone with `safe-area-inset-bottom` padding. All screens pad by the safe-area insets
-and scroll internally. Buttons are at least 44 x 44 CSS px. Nothing critical sits under browser chrome: the top bar
+and scroll internally. Buttons are at least 44 x 44 CSS px. Large screens (above 1600 x 1000): `ui-scale.js` sets `--ui-scale` (1 up to a 1600 x 1000 viewport, then the smaller of
+width/1600 and height/1000, capped at 2.5) and the top bar, rails, HUD, countdown, tutorial banner, captions, screens,
+frame-rate meter and toast are CSS-`zoom`ed by it (vw/vh lengths inside are divided by it); the playfield canvas is not
+zoomed and fills the space the larger chrome leaves. Nothing critical sits under browser chrome: the top bar
 wraps below 560 px, and the e2e test asserts the THROW button size at 390 x 844.
 
 ## 8. Art direction

@@ -61,6 +61,10 @@ button, input, select { font: inherit; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
 #app { display: flex; flex-direction: column; height: 100dvh; }
+/* Large screens: each DOM UI layer zooms by --ui-scale (ui-scale.js; 1 up to 1600×1000).
+   The playfield canvas is not zoomed — it fills whatever space the zoomed chrome leaves.
+   vw/vh inside zoomed elements are divided by the scale. */
+#topbar, .rail, #hud, .countdown, .tutorial-banner, .captions, .canvas-fallback, #screens, .fps-meter, .toast { zoom: var(--ui-scale, 1); }
 
 /* ---------- top bar ---------- */
 
@@ -144,10 +148,10 @@ button, input, select { font: inherit; }
   }
   body[data-left-handed="true"] #hud-actions { flex-direction: column; right: auto; left: calc(0.6rem + var(--sal)); }
   .btn-throw { font-size: 1.1rem; padding: 0.7rem 1.4rem; }
-  #hint-line.hint-line { position: absolute; left: calc(0.75rem + var(--sal)); bottom: calc(0.4rem + var(--sab)); margin: 0; max-width: 32vw; text-align: left; }
+  #hint-line.hint-line { position: absolute; left: calc(0.75rem + var(--sal)); bottom: calc(0.4rem + var(--sab)); margin: 0; max-width: calc(32vw / var(--ui-scale, 1)); text-align: left; }
   #tutorial-banner.tutorial-banner {
     left: calc(0.6rem + var(--sal)); top: calc(3.6rem + var(--sat)); transform: none;
-    max-width: 30vw; padding: 0.5rem 0.7rem; font-size: 0.9rem; text-align: left;
+    max-width: calc(30vw / var(--ui-scale, 1)); padding: 0.5rem 0.7rem; font-size: 0.9rem; text-align: left;
   }
 }
 
@@ -222,14 +226,14 @@ body[data-contrast="high"] .btn:hover { background: #2a2a2a; }
 
 .countdown {
   position: absolute; inset: 0; display: grid; place-items: center;
-  font-size: clamp(4rem, 18vw, 9rem); font-weight: 900; color: var(--accent-2);
+  font-size: clamp(4rem, calc(18vw / var(--ui-scale, 1)), 9rem); font-weight: 900; color: var(--accent-2);
   text-shadow: 0 4px 30px #000;
   pointer-events: none;
 }
 
 .tutorial-banner {
   position: absolute; top: calc(4.5rem + var(--sat)); left: 50%; transform: translateX(-50%);
-  max-width: min(34rem, 92vw);
+  max-width: min(34rem, calc(92vw / var(--ui-scale, 1)));
   background: color-mix(in srgb, var(--panel) 92%, transparent);
   border: 1px solid var(--accent);
   border-radius: var(--radius);
@@ -291,7 +295,7 @@ body[data-contrast="high"] .btn:hover { background: #2a2a2a; }
 }
 body[data-contrast="high"] #screen-title { background: #000000e6; }
 .title-big {
-  font-size: clamp(2.2rem, 7vw, 3.4rem);
+  font-size: clamp(2.2rem, calc(7vw / var(--ui-scale, 1)), 3.4rem);
   letter-spacing: 0.1em; margin-bottom: 0.2rem;
   color: var(--accent-2);
 }
@@ -412,5 +416,5 @@ body[data-motion="reduced"] * { transition: none !important; animation: none !im
 
 /* StarHermit account toast */
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 60;
-  max-width: calc(100vw - 32px); padding: 10px 16px; background: var(--panel, #1d1a17); color: var(--ink, #f3ead8);
+  max-width: calc(100vw / var(--ui-scale, 1) - 32px); padding: 10px 16px; background: var(--panel, #1d1a17); color: var(--ink, #f3ead8);
   border: 1px solid var(--accent, #e0a050); border-radius: 8px; font-size: 0.95rem; text-align: center; overflow-wrap: anywhere; }
