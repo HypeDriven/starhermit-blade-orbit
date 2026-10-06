@@ -210,11 +210,15 @@ Phases (`Game.phase`): `boot -> title -> modes | journey -> setup -> countdown -
 results`, then `results -> setup` (Next / Retry) or `-> title` (Menu). Screens (`SCREENS` in `js/ui.js`): title, modes,
 journey, setup, results, pause, help, settings; exactly one is visible, the HUD is visible only while no screen is.
 Help and Settings are overlays: opened from the top bar during a live round they pause it (`overlay-open`) and resume
-on Back; from the pause panel they return to the pause panel.
+on Back; from the pause panel they return to the pause panel. The top bar sits above the screen layer (z-index 11 over
+`#screens` at 10), so its Help/Settings work over every screen; switching Help ⇄ Settings keeps the screen the first
+overlay was opened from, and re-opening the open overlay does nothing. Screens pad their top by the top bar's measured
+height (`--topbar-h`, two rows when it wraps on phones) and their bottom by a visible account toast's height
+(`--toast-h`), so neither covers a panel's heading or buttons.
 
 - **Title**: key art backdrop (`assets/title-backdrop.webp`) under a dark scrim, Play (primary), Resume paused round
-  (only when a snapshot for a rebuildable stage exists), Daily Challenge, Leaderboards, Journey, Learn to Play, Settings (the title screen covers the top bar, so
-  the menu carries its own Settings button), progress line.
+  (only when a snapshot for a rebuildable stage exists), Daily Challenge, Leaderboards, Journey, Learn to Play, Settings (also in the
+  top bar), progress line.
 - **Modes**: card grid (name, description, ranked/casual meta); the same screen lists practice difficulties, challenges
   and lessons.
 - **Journey**: 40 square cells, locked ones dimmed and disabled, stars shown, mastery cells outlined in accent.

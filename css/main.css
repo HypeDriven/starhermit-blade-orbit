@@ -69,6 +69,8 @@ button, input, select { font: inherit; }
 /* ---------- top bar ---------- */
 
 #topbar {
+  /* above the full-viewport screen layer (#screens, z 10) so Help/Settings stay clickable over every screen */
+  position: relative; z-index: 11;
   display: flex; align-items: center; gap: 0.75rem;
   padding: calc(0.5rem + var(--sat)) calc(1rem + var(--sar)) 0.5rem calc(1rem + var(--sal));
   background: var(--panel);
@@ -261,7 +263,7 @@ body[data-contrast="high"] .btn:hover { background: #2a2a2a; }
 .screen {
   position: absolute; inset: 0;
   display: grid; place-items: center;
-  padding: calc(3.5rem + var(--sat)) calc(1rem + var(--sar)) calc(1rem + var(--sab)) calc(1rem + var(--sal));
+  padding: calc(var(--topbar-h, calc(3rem + var(--sat))) + 0.5rem) calc(1rem + var(--sar)) calc(1rem + var(--sab) + var(--toast-h, 0px)) calc(1rem + var(--sal));
   background: #100a06cc;
   backdrop-filter: blur(3px);
   pointer-events: auto;
@@ -416,5 +418,5 @@ body[data-motion="reduced"] * { transition: none !important; animation: none !im
 
 /* StarHermit account toast */
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 60;
-  max-width: calc(100vw / var(--ui-scale, 1) - 32px); padding: 10px 16px; background: var(--panel, #1d1a17); color: var(--ink, #f3ead8);
+  width: max-content; max-width: calc(100vw / var(--ui-scale, 1) - 32px); padding: 10px 16px; background: var(--panel, #1d1a17); color: var(--ink, #f3ead8);
   border: 1px solid var(--accent, #e0a050); border-radius: 8px; font-size: 0.95rem; text-align: center; overflow-wrap: anywhere; }

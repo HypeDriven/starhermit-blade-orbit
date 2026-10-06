@@ -27,6 +27,12 @@ class UI {
     this.lastFocus = null;
     this.captionTimer = null;
     this.wireStatic();
+    // Screens sit under the (clickable) top bar: pad them by its real height, which doubles when it
+    // wraps on phones. Layout px — the top bar and the screen layer share the same zoom.
+    const bar = $('topbar');
+    if (bar && typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(() => document.documentElement.style.setProperty('--topbar-h', bar.offsetHeight + 'px')).observe(bar);
+    }
   }
 
   // --- static wiring --------------------------------------------------------
@@ -203,7 +209,10 @@ class UI {
   }
 
   showOverlay(name) {
-    this.screenBeforeOverlay = this.currentScreen;
+    // The top bar stays clickable over every screen: re-opening the open overlay is a no-op and
+    // switching Help <-> Settings keeps the screen the first overlay was opened from.
+    if (this.currentScreen === name) return;
+    if (this.currentScreen !== 'help' && this.currentScreen !== 'settings') this.screenBeforeOverlay = this.currentScreen;
     // Help/Settings can be opened from the top bar mid-round: the sim must not
     // keep running (and burning a time limit) behind the overlay.
     this.h.action('overlay-open');
@@ -375,8 +384,11 @@ class UI {
     }
     el.textContent = text;
     el.hidden = false;
+    // screens pad their bottom by the toast so their buttons can always be scrolled clear of it
+    const root = document.documentElement.style;
+    root.setProperty('--toast-h', (el.offsetHeight + 12) + 'px');
     clearTimeout(this.toastTimer);
-    this.toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+    this.toastTimer = setTimeout(() => { el.hidden = true; root.setProperty('--toast-h', '0px'); }, 2600);
   }
 
   /** Profile chip avatar (object URL) — hidden when null. */
