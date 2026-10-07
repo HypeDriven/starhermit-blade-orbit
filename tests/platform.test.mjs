@@ -74,6 +74,7 @@ test('standalone: no token, no StarHermit requests', async () => {
   assert.equal((await P.fetchLeaderboard()).ok, false);
   assert.equal(P.inviteLink(), null);
   assert.equal(P.canSignIn(), false);
+  assert.deepEqual(await P.submitScore(1234), { posted: false, rank: null });
   assert.equal(calls.length, 0);
 });
 
@@ -137,4 +138,22 @@ test('account strings exist in every required locale', () => {
   for (const loc of Object.keys(GFX_STRINGS))
     for (const k of Object.keys(ACCOUNT_STRINGS['en-US'])) assert.ok(ACCOUNT_STRINGS[loc]?.[k], `${loc}.${k}`);
   assert.equal(Object.keys(ACCOUNT_STRINGS).length, 9);
+});
+
+test('launch token: submitScore posts high-score and reads the rank', async () => {
+  const { P, SH } = boot({ hash: '#game_token=' + jwt({ sub: USER, game_scope: SLUG, exp: Math.floor(Date.now() / 1000) + 3600 }) });
+  const sent = [];
+  SH.submitScores = async (s) => { sent.push(plain(s)); return Object.keys(s); };
+  SH.leaderboard = async (key) => ({ items: key === 'high-score' ? [{ userId: 'x', rank: 1 }, { userId: USER, rank: 2 }] : [] });
+  assert.deepEqual(await P.submitScore(812.4), { posted: true, rank: 2 });
+  assert.deepEqual(sent, [{ 'high-score': 812 }]);
+  SH.submitScores = async () => [];
+  assert.deepEqual(await P.submitScore(5), { posted: false, rank: null });
+});
+
+test('leaderboard line strings exist in every locale', () => {
+  for (const [loc, t] of Object.entries(ACCOUNT_STRINGS)) {
+    for (const k of ['lbPosting', 'lbRank', 'lbPosted', 'lbNotPosted']) assert.ok(t[k], loc + ' ' + k);
+    assert.ok(t.lbRank.includes('{rank}'), loc);
+  }
 });

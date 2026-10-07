@@ -33,7 +33,8 @@ listed once, at the end, under "Design intent not yet implemented".
 | `js/ui.js` | Screens, HUD, setup/results rendering, help cards, settings binding (including the Graphics section), accessibility mirrors |
 | `js/audio.js` | WebAudio buses, authored Opus samples with synth fallback, ambience loops, generative music, captions |
 | `js/platform.js` | StarHermit adapter: signed-in time sync, account, read-only platform leaderboard; standalone makes no request |
-| `server.js` | Static server + `/api/v1/*`: time, daily id, replay-validated daily leaderboard, presence, telemetry sink (the client calls only `time`, and only when signed in) |
+| `score-script.js` | StarHermit platform script (`server=`): range-checks a finished run's total and posts it to the `high-score` leaderboard (canonical copy in the games repo's `tools/score-script.js`) |
+| `server.js` | Local dev server: static + `/api/v1/*`: time, daily id, replay-validated daily leaderboard, presence, telemetry sink (the client calls only `time`, and only when signed in) |
 | `sfx/` | 17 Opus clips, `manifest.txt` (canonical), `manifest.json` (generator input), `manifest.md` (generator output) |
 | `assets/` | `title-backdrop.webp` (title key art), `throwing-knife.glb` (hero prop model, not yet wired) |
 | `coverart.png`, `icon.png`, `favicon.svg` | Store cover (1200x675), 256 px icon, tab icon |
@@ -352,7 +353,7 @@ tabular numerals in the HUD), so the missing piece is the string table and selec
 
 ## 12. StarHermit integration
 
-Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=server.js`, `version=1.0.0`, `ruleset=v1`,
+Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=score-script.js`, `version=1.0.0`, `ruleset=v1`,
 `cover=coverart.png`. Conventions follow https://wiki.starhermit.com/.
 
 | Feature | Status |
@@ -365,11 +366,12 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=serv
 | Settings KV | Every settings save sends the changed keys (volumes, quality and graphics overrides, reduced motion, contrast, palette, text scale, handedness, hold-to-aim, timing assist, haptics, captions, camera) with `PATCH /api/v1/games/{slug}/settings`; on start the platform's values override local ones |
 | Invite | When signed in the title menu shows **Invite a friend**, which copies `StarHermit.inviteLink()` and confirms with a toast (the link is shown if the clipboard is blocked) |
 | Controls | `starhermit.txt` declares `control.throw`, `pause`, `back`, `undo`, `hint`, `restart`; keydown routes by `event.code` through `StarHermit.loadBindings` (defaults standalone) and the Help controls list shows the effective keys |
-| Strings | Sign-in, invite, toast and sign-out texts exist in all nine locales (`ACCOUNT_STRINGS` in `js/gfx-i18n.js`) |
-| Platform leaderboard | Read-only via the SDK (`GET /api/v1/games/{slug}/leaderboards` → first board → `GET /api/v1/leaderboards/{id}/entries?page=&pageSize=`), user ids resolved to nicknames; shown on the title-screen Leaderboards panel. Clients never submit to game leaderboards; no board or no token → the panel says boards are unavailable |
+| Strings | Sign-in, invite, toast, sign-out and leaderboard-line texts exist in all nine locales (`ACCOUNT_STRINGS` in `js/gfx-i18n.js`) |
+| Platform leaderboard | Read via the SDK (`GET /api/v1/games/{slug}/leaderboards` → first board → `GET /api/v1/leaderboards/{id}/entries?page=&pageSize=`), user ids resolved to nicknames; shown on the title-screen Leaderboards panel. No board or no token → the panel says boards are unavailable |
+| Leaderboard submit | When signed in, every finished Journey, Daily or Challenge run (won or lost; not Practice or Learn) posts its total through `StarHermit.submitScores` (a practice session whose `score-script.js` posts it to the `high-score` board: integer, higher is better, 0–1,000,000; negative totals post as 0). The results screen shows "Posting score…", then "Leaderboard rank: #N" (or posted / not posted), localized in all nine locales (`ACCOUNT_STRINGS`). Standalone shows nothing and posts nothing |
 | Server time | `GET /api/v1/time` with round-trip-adjusted offset, only when signed in; drives the top-bar clock and the daily seed |
 | Standalone | No launch token: no same-origin `/api` or `/ws` request at all; the local clock drives the clock and daily seed, scores and replays stay in localStorage |
-| Not used | The `server.js` score, presence and telemetry routes (no score submission, presence or telemetry); platform achievements (none declared — `server.js` is an HTTP host, not a platform script reporting `achievements`; unlocks stay local), platform sessions/matchmaking/session invites/chat/replays (single-player), friends filtering, rooms, WebSocket, voice |
+| Not used | The `server.js` score, presence and telemetry routes (no presence or telemetry); platform achievements (none declared — `score-script.js` reports only scores; unlocks stay local), matchmaking/session invites/chat/replays (single-player; the only platform session and WebSocket are the score post above), friends filtering, rooms, voice |
 
 ## 13. Technical architecture
 

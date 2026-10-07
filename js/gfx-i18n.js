@@ -115,7 +115,7 @@ export function gfxText(locale) {
   return t;
 }
 
-/** StarHermit account strings (sign-in, invite, toasts). `{name}` = display name. */
+/** StarHermit account strings (sign-in, invite, toasts, leaderboard line). `{name}` = display name, `{rank}` = board rank. */
 export const ACCOUNT_STRINGS = {
   "en-US": {
     "signIn": "Sign in with StarHermit",
@@ -127,7 +127,11 @@ export const ACCOUNT_STRINGS = {
     "synced": "progress synced",
     "saving": "saving…",
     "syncOff": "cloud sync unavailable",
-    "signedOut": "Signed out of StarHermit — progress stays on this device."
+    "signedOut": "Signed out of StarHermit — progress stays on this device.",
+    "lbPosting": "Posting score to the leaderboard…",
+    "lbRank": "Leaderboard rank: #{rank}",
+    "lbPosted": "Score posted to the leaderboard.",
+    "lbNotPosted": "Score not posted to the leaderboard."
   },
   "en-GB": {
     "signIn": "Sign in with StarHermit",
@@ -139,7 +143,11 @@ export const ACCOUNT_STRINGS = {
     "synced": "progress synced",
     "saving": "saving…",
     "syncOff": "cloud sync unavailable",
-    "signedOut": "Signed out of StarHermit — progress stays on this device."
+    "signedOut": "Signed out of StarHermit — progress stays on this device.",
+    "lbPosting": "Posting score to the leaderboard…",
+    "lbRank": "Leaderboard rank: #{rank}",
+    "lbPosted": "Score posted to the leaderboard.",
+    "lbNotPosted": "Score not posted to the leaderboard."
   },
   "es-419": {
     "signIn": "Iniciar sesión con StarHermit",
@@ -151,7 +159,11 @@ export const ACCOUNT_STRINGS = {
     "synced": "progreso sincronizado",
     "saving": "guardando…",
     "syncOff": "sincronización en la nube no disponible",
-    "signedOut": "Sesión de StarHermit cerrada: el progreso se queda en este dispositivo."
+    "signedOut": "Sesión de StarHermit cerrada: el progreso se queda en este dispositivo.",
+    "lbPosting": "Enviando la puntuación a la clasificación…",
+    "lbRank": "Puesto en la clasificación: #{rank}",
+    "lbPosted": "Puntuación enviada a la clasificación.",
+    "lbNotPosted": "No se envió la puntuación a la clasificación."
   },
   "es-ES": {
     "signIn": "Iniciar sesión con StarHermit",
@@ -163,7 +175,11 @@ export const ACCOUNT_STRINGS = {
     "synced": "progreso sincronizado",
     "saving": "guardando…",
     "syncOff": "sincronización en la nube no disponible",
-    "signedOut": "Sesión de StarHermit cerrada: el progreso se queda en este dispositivo."
+    "signedOut": "Sesión de StarHermit cerrada: el progreso se queda en este dispositivo.",
+    "lbPosting": "Enviando la puntuación a la clasificación…",
+    "lbRank": "Puesto en la clasificación: #{rank}",
+    "lbPosted": "Puntuación enviada a la clasificación.",
+    "lbNotPosted": "No se ha enviado la puntuación a la clasificación."
   },
   "de-DE": {
     "signIn": "Mit StarHermit anmelden",
@@ -175,7 +191,11 @@ export const ACCOUNT_STRINGS = {
     "synced": "Fortschritt synchronisiert",
     "saving": "wird gespeichert …",
     "syncOff": "Cloud-Synchronisierung nicht verfügbar",
-    "signedOut": "Von StarHermit abgemeldet – der Fortschritt bleibt auf diesem Gerät."
+    "signedOut": "Von StarHermit abgemeldet – der Fortschritt bleibt auf diesem Gerät.",
+    "lbPosting": "Punktzahl wird an die Bestenliste gesendet …",
+    "lbRank": "Platz in der Bestenliste: #{rank}",
+    "lbPosted": "Punktzahl an die Bestenliste gesendet.",
+    "lbNotPosted": "Punktzahl nicht an die Bestenliste gesendet."
   },
   "fr-FR": {
     "signIn": "Se connecter avec StarHermit",
@@ -187,7 +207,11 @@ export const ACCOUNT_STRINGS = {
     "synced": "progression synchronisée",
     "saving": "enregistrement…",
     "syncOff": "synchronisation cloud indisponible",
-    "signedOut": "Déconnecté de StarHermit : la progression reste sur cet appareil."
+    "signedOut": "Déconnecté de StarHermit : la progression reste sur cet appareil.",
+    "lbPosting": "Envoi du score au classement…",
+    "lbRank": "Rang au classement : #{rank}",
+    "lbPosted": "Score envoyé au classement.",
+    "lbNotPosted": "Score non envoyé au classement."
   },
   "fr-CA": {
     "signIn": "Se connecter avec StarHermit",
@@ -199,7 +223,11 @@ export const ACCOUNT_STRINGS = {
     "synced": "progression synchronisée",
     "saving": "enregistrement…",
     "syncOff": "synchronisation infonuagique indisponible",
-    "signedOut": "Déconnecté de StarHermit : la progression reste sur cet appareil."
+    "signedOut": "Déconnecté de StarHermit : la progression reste sur cet appareil.",
+    "lbPosting": "Envoi du pointage au classement…",
+    "lbRank": "Rang au classement : #{rank}",
+    "lbPosted": "Pointage envoyé au classement.",
+    "lbNotPosted": "Pointage non envoyé au classement."
   },
   "pt-BR": {
     "signIn": "Entrar com a StarHermit",
@@ -211,7 +239,11 @@ export const ACCOUNT_STRINGS = {
     "synced": "progresso sincronizado",
     "saving": "salvando…",
     "syncOff": "sincronização na nuvem indisponível",
-    "signedOut": "Você saiu da StarHermit — o progresso continua neste dispositivo."
+    "signedOut": "Você saiu da StarHermit — o progresso continua neste dispositivo.",
+    "lbPosting": "Enviando a pontuação para o ranking…",
+    "lbRank": "Posição no ranking: #{rank}",
+    "lbPosted": "Pontuação enviada para o ranking.",
+    "lbNotPosted": "A pontuação não foi enviada para o ranking."
   },
   "it-IT": {
     "signIn": "Accedi con StarHermit",
@@ -223,7 +255,11 @@ export const ACCOUNT_STRINGS = {
     "synced": "progressi sincronizzati",
     "saving": "salvataggio…",
     "syncOff": "sincronizzazione cloud non disponibile",
-    "signedOut": "Disconnesso da StarHermit: i progressi restano su questo dispositivo."
+    "signedOut": "Disconnesso da StarHermit: i progressi restano su questo dispositivo.",
+    "lbPosting": "Invio del punteggio alla classifica…",
+    "lbRank": "Posizione in classifica: #{rank}",
+    "lbPosted": "Punteggio inviato alla classifica.",
+    "lbNotPosted": "Punteggio non inviato alla classifica."
   }
 };
 

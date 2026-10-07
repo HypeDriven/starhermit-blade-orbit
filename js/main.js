@@ -393,7 +393,23 @@ class Game {
 
     if (achievements.length) this.audio.event('achievement');
     this.ui.showResults(report, { achievements, isBest, nextStage, best });
+    this.postToLeaderboard(content.kind, report.total);
     this.ui.updateTitle(this.progression, false);
+  }
+
+  /** Signed in only: post a ranked run (not practice or lessons) and show the board rank. */
+  postToLeaderboard(kind, total) {
+    const line = document.getElementById('results-lb');
+    if (!line) return;
+    const seq = (this.lbSeq = (this.lbSeq || 0) + 1);
+    if (!this.platform.tokenHosted || kind === 'practice' || kind === 'tutorial') { line.hidden = true; return; }
+    line.hidden = false;
+    line.textContent = ACCOUNT.lbPosting;
+    this.platform.submitScore(total).then((r) => {
+      if (seq !== this.lbSeq) return;
+      line.textContent = !r.posted ? ACCOUNT.lbNotPosted
+        : r.rank ? ACCOUNT.lbRank.replace('{rank}', r.rank) : ACCOUNT.lbPosted;
+    });
   }
 
   pause(reason = 'user') {
