@@ -64,7 +64,7 @@ export class AudioEngine {
     for (const name of ['music', 'effects', 'ambience', 'voice']) {
       const g = ctx.createGain();
       g.connect(master);
-      this.buses[name] = g;
+      this.buses[name] = (globalThis.GameOptions ? globalThis.GameOptions.tagBus(g, name) : g);
     }
     this.applyVolumes();
     this.started = true;
@@ -110,7 +110,7 @@ export class AudioEngine {
 
   playNoise({ bus = 'effects', t0, dur = 0.2, peak = 0.4, filterFreq = 2000, q = 1, type = 'bandpass' }) {
     const ctx = this.ctx;
-    const src = ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createBufferSource(), bus) : ctx.createBufferSource());
     src.buffer = this.noiseBuffer();
     src.loop = true;
     const filt = ctx.createBiquadFilter();
@@ -123,7 +123,7 @@ export class AudioEngine {
 
   playTone({ bus = 'effects', t0, freq = 440, freqEnd = null, dur = 0.15, peak = 0.3, type = 'sine' }) {
     const ctx = this.ctx;
-    const osc = ctx.createOscillator();
+    const osc = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createOscillator(), bus) : ctx.createOscillator());
     osc.type = type;
     osc.frequency.setValueAtTime(freq, t0);
     if (freqEnd) osc.frequency.exponentialRampToValueAtTime(freqEnd, t0 + dur);
@@ -169,7 +169,7 @@ export class AudioEngine {
       if (entry === undefined && this.ctx) this.loadSample(name);
       return false;
     }
-    const src = this.ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), name) : this.ctx.createBufferSource());
     src.buffer = entry;
     src.connect(this.buses.effects);
     src.start(t0);
@@ -277,7 +277,7 @@ export class AudioEngine {
   startAmbience(kind = 'hearth') {
     if (!this.started || this.ambienceNodes) return;
     const ctx = this.ctx;
-    const src = ctx.createBufferSource();
+    const src = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createBufferSource(), null) : ctx.createBufferSource());
     src.buffer = this.noiseBuffer();
     src.loop = true;
     const filt = ctx.createBiquadFilter();
@@ -288,7 +288,7 @@ export class AudioEngine {
     src.connect(filt); filt.connect(g); g.connect(this.buses.ambience);
     src.start();
     // slow LFO on the filter for a breathing room tone
-    const lfo = ctx.createOscillator();
+    const lfo = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(ctx.createOscillator(), null) : ctx.createOscillator());
     lfo.frequency.value = 0.07;
     const lfoGain = ctx.createGain();
     lfoGain.gain.value = kind === 'wind' ? 260 : 60;
@@ -304,7 +304,7 @@ export class AudioEngine {
     // loadSample returns the cached AudioBuffer (or null) once resolved, so wrap it.
     Promise.resolve(this.loadSample(sampleName)).then((buf) => {
       if (!buf || this.ambienceNodes !== nodes || !this.ctx) return;
-      const loop = this.ctx.createBufferSource();
+      const loop = (globalThis.GameOptions ? globalThis.GameOptions.trackSource(this.ctx.createBufferSource(), null) : this.ctx.createBufferSource());
       loop.buffer = buf;
       loop.loop = true;
       const loopGain = this.ctx.createGain();

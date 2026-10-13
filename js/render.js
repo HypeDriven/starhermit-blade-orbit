@@ -593,13 +593,13 @@ class BladeRenderer {
     }
     if (this.composer) {
       try {
-        this.composer.render(dtMs / 1000);
+        (globalThis.GameOptions ? globalThis.GameOptions.draw(this.composer.renderer, () => this.composer.render(dtMs / 1000)) : this.composer.render(dtMs / 1000));
         return;
       } catch {
         this._postFailed();
       }
     }
-    this.renderer.render(this.scene, this.camera);
+    (globalThis.GameOptions ? globalThis.GameOptions.draw(this.renderer, () => this.renderer.render(this.scene, this.camera)) : this.renderer.render(this.scene, this.camera));
   }
 
   interruptSwoop() { this.swoop.t = 1; }
