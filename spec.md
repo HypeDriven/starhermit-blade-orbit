@@ -29,7 +29,8 @@ listed once, at the end, under "Design intent not yet implemented".
 | `js/session.js` | `Session` (commands, undo, replay envelope, snapshots), `verifyReplay`, `store` (localStorage), achievements |
 | `js/render.js` | Three.js stage: procedural wheel, blades, sigils, particles, embers, camera; graphics settings (`setGraphics`, `graphicsInfo`), post chain, adaptive resolution |
 | `js/gfx.js` | Pure graphics quality model: presets, categories, GPU detection, `resolve`, `presetTier`, `choosePreset`, `describe` |
-| `js/gfx-i18n.js` | Graphics-section strings in nine locales, `pickLocale`, `gfxText` |
+| `js/i18n.js` | Game string tables in nine locales, `t`, live language switching through `sh-language.js` |
+| `js/gfx-i18n.js` | Graphics-section and StarHermit account strings in nine locales, `gfxText`, `accountText` |
 | `js/ui.js` | Screens, HUD, setup/results rendering, help cards, settings binding (including the Graphics section), accessibility mirrors |
 | `js/audio.js` | WebAudio buses, authored Opus samples with synth fallback, ambience loops, generative music, captions |
 | `js/platform.js` | StarHermit adapter: signed-in time sync, account, read-only platform leaderboard; standalone makes no request |
@@ -294,7 +295,7 @@ with 4× MSAA for MSAA). Choosing a preset clears overrides; every change applie
 material recompiles, post rebuild, scenery rebuild for detail) and is saved in `blade-orbit:settings` (`quality` holds
 the preset, `graphics` holds overrides, scale and toggles; a legacy `medium` reads as Balanced). If the post chain
 fails the game renders without it and the section shows a note. The canvas and body carry `data-gfx-preset`. The
-section's strings come from `js/gfx-i18n.js` in the nine target locales, picked from the browser language.
+section's strings come from `js/gfx-i18n.js` in the nine target locales and follow the game language (section 10).
 
 **Visual assets the design calls for**: store cover (`coverart.png`), title backdrop (`assets/title-backdrop.webp`), a
 hero throwing-knife model (`assets/throwing-knife.glb`), icon and favicon. See section 15.
@@ -332,11 +333,25 @@ SFX event table (source for `sfx/manifest.txt`):
 
 ## 10. Localization
 
-The shipped build is English only: `<html lang="en">`, and every string is a literal in `index.html`, `js/ui.js`,
-`js/main.js`, `js/content.js` (stage and tutorial text) and `js/audio.js` (captions). There is no locale detection and
-no string table. The product requirement is en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT; layout
-uses wrapping and fluid sizing rather than fixed widths (wrapping top bar, auto-fill card grids, `min()`-sized panels,
-tabular numerals in the HUD), so the missing piece is the string table and selector. This is tracked in "Design intent not yet implemented".
+Every player-facing string ships in en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT: menus, mode
+cards, briefing, HUD, rails, countdown, hints, announcements and the board mirror, results, help cards and controls,
+settings, captions, stage/tier/tutorial/challenge/achievement names, and the Graphics and account lines. Tables live in
+`js/i18n.js` (static markup carries `data-i18n` / `data-i18n-aria` / `data-i18n-title`); `js/gfx-i18n.js` holds the
+Graphics section and StarHermit account lines for the same locale. Content keeps its English names as data (ids and
+replays are unchanged) and is named through the tables at display time.
+
+One language source decides the locale: `sh-language.js` (`StarHermitLanguage.create`, game `blade-orbit`). Order:
+the player's choice in Settings → Language (the shared options panel's Language section inside the Graphics
+fieldset), then the StarHermit account's preferred language (`GET /api/v1/me/language`, signed in only), then
+`navigator.languages`, then en-US. "Automatic" shows the locale it resolved to. The choice is stored per player
+(`blade-orbit.language.<user|guest>`) and, signed in, in the settings key `ui.language`. `?lang=<tag>` forces a
+locale for that page load (QA links) and hides the selector. `<html lang>` follows the locale.
+
+Changing language applies at once without restarting: markup is re-applied, and the current screen re-renders in
+place — mode lists, briefing, journey grid, results (the stored leaderboard outcome is re-shown, never reposted),
+leaderboard panel, help, Graphics section and account buttons; during a round the HUD, rails, tutorial banner, hint
+line and board mirror re-render while the round state, pause and focus are untouched. Layout wraps rather than
+truncates (wrapping top bar and HUD row, auto-fill card grids, `min()`-sized panels).
 
 ## 11. Accessibility
 
@@ -363,6 +378,9 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=scor
 | Sign-in | On `*.starhermit.com` without a token the title menu shows **Sign in with StarHermit** (`StarHermit.signIn()`); hidden when signed in and locally |
 | Identity | The top-bar chip shows the profile nickname (`GET /api/v1/users/{sub}/profile`, never `/api/v1/me`; `Player <id8>` fallback) and the account avatar (`/avatar`); "Guest" without an avatar remains the offline label |
 | Cloud save | Progression, best scores and achievements (`{ v: 1, progression, scores, achievements }`) mirror to `/api/v1/me/cloud-saves/game:{slug}`. On start a remote copy wins over localStorage, otherwise this device seeds the slot; every write of those keys queues a debounced upload, flushed on `pagehide`/hidden. Settings, snapshots and replays stay local |
+| Save conflicts | Writes are conditional; when another device saved first the SDK emits `saveconflict` and blocks writes. The game re-reads the cloud copy (`loadJSON`, which lifts the block), merges it into local progress keeping the better value of every field (furthest unlock, most stars, highest counters, best score per stage, every finished lesson, every achievement with its earliest time) and saves the merged document again; a round in progress is untouched |
+| Language | `sh-language.js` reads the account's preferred language and saves the Settings → Language choice as `ui.language` (section 10) |
+| Report a problem | The shared options panel's Report section (signed in only) posts bug reports to `/reports` |
 | Settings KV | Every settings save sends the changed keys (volumes, quality and graphics overrides, reduced motion, contrast, palette, text scale, handedness, hold-to-aim, timing assist, haptics, captions, camera) with `PATCH /api/v1/games/{slug}/settings`; on start the platform's values override local ones |
 | Invite | When signed in the title menu shows **Invite a friend**, which copies `StarHermit.inviteLink()` and confirms with a toast (the link is shown if the clipboard is blocked) |
 | Controls | `starhermit.txt` declares `control.throw`, `pause`, `back`, `undo`, `hint`, `restart`; keydown routes by `event.code` through `StarHermit.loadBindings` (defaults standalone) and the Help controls list shows the effective keys |
@@ -395,7 +413,7 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=scor
 
 ## 14. Testing and acceptance criteria
 
-`npm test` also runs `tests/gfx.test.mjs` and `tests/platform.test.mjs` (StarHermit adapter in a sandbox with a stubbed `fetch`: no requests standalone; token read and fragment stripped; nickname; settings patch of changed keys; cloud-save round trip through `game:<slug>`; control overrides; leaderboard read; sign-out on refused renewal; account strings in all nine locales). `tests/rules.test.mjs` (19 tests): legal actions; deterministic rotation; every rejection reason; scoring
+`npm test` also runs `tests/gfx.test.mjs` and `tests/platform.test.mjs` (StarHermit adapter in a sandbox with a stubbed `fetch`: no requests standalone; token read and fragment stripped; nickname; settings patch of changed keys; cloud-save round trip through `game:<slug>`; control overrides; leaderboard read; sign-out on refused renewal; account strings in all nine locales; a save conflict reloads the cloud copy, lifts the block and merges keeping the better values; every game string, tier, tutorial and challenge name exists in all nine locales with matching placeholders). The e2e adds a signed-in Language step: the StarHermit preferred language fr-CA resolves Automatic to Français (Canada), choosing Italiano while a practice round is paused re-renders Settings, pause screen, HUD and rail without changing the round state and saves `ui.language`, and Report a problem posts to `/reports`. `tests/rules.test.mjs` (19 tests): legal actions; deterministic rotation; every rejection reason; scoring
 components; the three loss reasons; serialization round-trip and version guard; replay determinism across all shipped
 stages; tamper detection; all content validates (Journey, tutorials, challenges, 14 upcoming dailies); generator
 determinism and difficulty scaling; daily stability per UTC day; practice validity; malformed-command fuzz; bot
@@ -428,8 +446,6 @@ banners, help cards) before the first mechanic; `node --check` clean on all JS; 
 
 ## 16. Known limitations
 
-- No localization layer; English literals throughout except the Graphics settings section (section 10) and the StarHermit account strings, which follow
-  the browser language and so can differ from the rest of the English UI.
 - The platform leaderboard shows the ranked top 20 on the title-screen panel, but the player's own rank is not
   highlighted there; daily results are not submitted anywhere.
 - Offline play shows "Guest" in the top-bar chip; the account nickname appears only when launched with a token.
@@ -442,11 +458,10 @@ banners, help cards) before the first mechanic; `node --check` clean on all JS; 
 
 ## Design intent not yet implemented
 
-1. Ship string tables and a locale selector for en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT.
-2. Show the daily board (global top 50 and the player's rank) on the results screen and the briefing, and highlight the player's own row on the platform leaderboard panel.
-3. Load `assets/throwing-knife.glb` for the standby and embedded blades with the procedural mesh as fallback.
-4. Add a friends-only filter to the leaderboard panel.
-5. Give the two reticle settings distinct behaviour (hold-to-preview only while the pointer is down).
+1. Show the daily board (global top 50 and the player's rank) on the results screen and the briefing, and highlight the player's own row on the platform leaderboard panel.
+2. Load `assets/throwing-knife.glb` for the standby and embedded blades with the procedural mesh as fallback.
+3. Add a friends-only filter to the leaderboard panel.
+4. Give the two reticle settings distinct behaviour (hold-to-preview only while the pointer is down).
 
 ## Browser interference
 

@@ -8,6 +8,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Platform } from '../js/platform.js';
 import { ACCOUNT_STRINGS, GFX_STRINGS } from '../js/gfx-i18n.js';
+import { mergeCloudDocs } from '../js/session.js';
+import { STRINGS, LOCALES } from '../js/i18n.js';
+import { JOURNEY, TUTORIALS, CHALLENGES } from '../js/content.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SLUG = 'blade-orbit';
@@ -33,7 +36,12 @@ function boot({ hash = '' } = {}) {
     const u = decodeURIComponent(url);
     if (u.endsWith(`/api/v1/users/${USER}/profile`)) return Response.json({ nickname: 'Thrower' });
     if (u.endsWith(`/cloud-saves/game:${SLUG}`)) {
-      if (method === 'PUT') { cloud.bytes = Buffer.from(JSON.parse(init.body).dataBase64, 'base64'); return new Response(null, { status: 204 }); }
+      if (method === 'PUT') {
+        if (cloud.conflict) { cloud.conflict = false; return Response.json({ etag: '"other"' }, { status: 412 }); }
+        cloud.puts = (cloud.puts || 0) + 1;
+        cloud.bytes = Buffer.from(JSON.parse(init.body).dataBase64, 'base64');
+        return Response.json({ etag: `"v${cloud.puts}"` });
+      }
       return cloud.bytes ? new Response(cloud.bytes) : new Response('', { status: 404 });
     }
     if (u.endsWith(`/games/${SLUG}/settings`)) {
@@ -155,5 +163,61 @@ test('leaderboard line strings exist in every locale', () => {
   for (const [loc, t] of Object.entries(ACCOUNT_STRINGS)) {
     for (const k of ['lbPosting', 'lbRank', 'lbPosted', 'lbNotPosted']) assert.ok(t[k], loc + ' ' + k);
     assert.ok(t.lbRank.includes('{rank}'), loc);
+  }
+});
+
+test('save conflict: the cloud copy is reloaded and merged, keeping the better values', async () => {
+  const token = jwt({ sub: USER, game_scope: SLUG, exp: Math.floor(Date.now() / 1000) + 3600 });
+  const { P, SH, cloud } = boot({ hash: `#game_token=${token}` });
+  await P.loadAccount(KEYS);
+  const conflicts = [];
+  P.onSaveConflict((remote) => conflicts.push(plain(remote)));
+  const mine = { v: 1, progression: { journeyUnlocked: 6, journeyStars: { 'journey-1': 3 }, tutorialsDone: { 'tut-throw': true }, masteryXp: 40, sessionsPlayed: 3 },
+    scores: { 'journey-1': { total: 900 } }, achievements: { first_clear: 200 } };
+  const theirs = { v: 1, progression: { journeyUnlocked: 3, journeyStars: { 'journey-1': 1, 'journey-2': 2 }, tutorialsDone: { 'tut-spacing': true }, masteryXp: 70, sessionsPlayed: 9 },
+    scores: { 'journey-1': { total: 500 }, 'journey-2': { total: 650 } }, achievements: { first_clear: 100, combo_five: 300 } };
+  P.saveCloud(mine); await P.flushCloud();
+  const other = boot({ hash: `#game_token=${token}` });
+  await other.P.loadAccount(KEYS);
+  other.P.saveCloud(theirs); await other.P.flushCloud();
+  cloud.bytes = other.cloud.bytes;
+  cloud.conflict = true;
+  P.saveCloud(mine); await P.flushCloud();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(SH.saveConflicted(), false, 'reload clears the conflict');
+  assert.equal(conflicts.length, 1);
+  assert.deepEqual(conflicts[0], theirs);
+  const m = mergeCloudDocs(mine, conflicts[0]);
+  assert.equal(m.progression.journeyUnlocked, 6);
+  assert.deepEqual(m.progression.journeyStars, { 'journey-1': 3, 'journey-2': 2 });
+  assert.deepEqual(m.progression.tutorialsDone, { 'tut-throw': true, 'tut-spacing': true });
+  assert.equal(m.progression.masteryXp, 70);
+  assert.equal(m.progression.sessionsPlayed, 9);
+  assert.equal(m.scores['journey-1'].total, 900);
+  assert.equal(m.scores['journey-2'].total, 650);
+  assert.deepEqual(m.achievements, { first_clear: 100, combo_five: 300 });
+  // the merged document saves again without a conflict
+  P.saveCloud(m); assert.equal(await P.flushCloud(), true);
+});
+
+test('every player-facing string and content name exists in all nine locales', () => {
+  assert.deepEqual(LOCALES, ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT']);
+  const keys = Object.keys(STRINGS['en-US']);
+  for (const c of TUTORIALS) for (const k of [`tut.${c.id}`, `tut.${c.id}.0`, `tut.${c.id}.1`]) assert.ok(keys.includes(k), k);
+  for (const c of CHALLENGES) assert.ok(keys.includes(`ch.${c.id}`) && keys.includes(`chd.${c.id}`), c.id);
+  for (let i = 0; i < 5; i++) assert.ok(keys.includes(`tier.${i}`));
+  assert.equal(JOURNEY.length, 40);
+  for (const loc of LOCALES) {
+    for (const k of keys) {
+      const v = STRINGS[loc][k];
+      assert.ok(typeof v === 'string' && v.length, `${loc} ${k}`);
+      const want = (STRINGS['en-US'][k].match(/\{\w+\}/g) || []).sort().join();
+      assert.equal((v.match(/\{\w+\}/g) || []).sort().join(), want, `${loc} ${k} placeholders`);
+    }
+  }
+  // translations are real: most UI strings differ from English outside en-GB
+  for (const loc of LOCALES.filter((l) => !l.startsWith('en'))) {
+    const same = keys.filter((k) => STRINGS[loc][k] === STRINGS['en-US'][k]).length;
+    assert.ok(same < keys.length * 0.15, `${loc}: ${same} untranslated`);
   }
 });

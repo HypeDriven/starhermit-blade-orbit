@@ -13,10 +13,11 @@ import {
 import { Session, store, evaluateAchievements, ACHIEVEMENTS } from './session.js';
 import { createRenderer } from './render.js';
 import { normalizePreset, CATEGORIES } from './gfx.js';
-import { createUI } from './ui.js';
+import { createUI, contentName, tutorialStepText } from './ui.js';
 import { AudioEngine } from './audio.js';
 import { Platform } from './platform.js';
-import { accountText, pickLocale } from './gfx-i18n.js';
+import { accountText } from './gfx-i18n.js';
+import { t, getLang, onLanguage } from './i18n.js';
 
 // Keyboard actions by KeyboardEvent.code (control.* in starhermit.txt);
 // a signed-in player's StarHermit overrides replace these at boot.
@@ -24,7 +25,8 @@ const KEY_DEFAULTS = {
   throw: ['Space', 'Enter', 'NumpadEnter'], pause: ['KeyP'], back: ['Escape'],
   undo: ['KeyU'], hint: ['KeyH'], restart: ['KeyR'],
 };
-const ACCOUNT = accountText(pickLocale(typeof navigator !== 'undefined' ? (navigator.languages || [navigator.language]) : []));
+// Account / leaderboard lines follow the game language (Settings → Language).
+const acct = () => accountText(getLang());
 
 const TICK_MS = 1000 / SIM_FPS;
 const RESOLVE_LOCK_MS = 140;   // shortest non-interruptible resolution window
@@ -81,10 +83,10 @@ class Game {
     await this.initAccount();
     this.ui.applySettingsToDom(this.settings);
     this.ui.buildHelp(this.keyLabels());
-    this.ui.setProfileChip('Guest');
+    this.ui.setProfileChip(t('guest'));
     // Hosted: the account nickname and avatar replace the guest chip when they resolve.
     this.platform.fetchProfile().then((p) => {
-      if (p) this.ui.setProfileChip(p.displayName);
+      if (p) { this.profileName = p.displayName; this.ui.setProfileChip(p.displayName); }
     });
     this.platform.avatarUrl().then((url) => this.ui.setProfileAvatar(url));
 
@@ -125,9 +127,10 @@ class Game {
     P.onAuth((a) => {
       if (!a.signedIn) {
         this.signedOutNotice = true;
-        this.ui.setProfileChip('Guest');
+        this.profileName = null;
+        this.ui.setProfileChip(t('guest'));
         this.ui.setProfileAvatar(null);
-        this.ui.toast(ACCOUNT.signedOut);
+        this.ui.toast(acct().signedOut);
       }
       this.refreshAccountButtons();
     });
@@ -143,6 +146,16 @@ class Game {
     this.audio.settings = this.settings;
     this.audio.applyVolumes();
     this.keyBindings = acc.bindings;
+    // Another device saved first: merge its copy (better values win) and save again.
+    P.onSaveConflict((remote) => {
+      if (!store.mergeCloud(remote)) return;
+      this.progression = store.getProgression();
+      P.saveCloud(store.exportCloud());
+      if (this.phase === 'title' || this.phase === 'boot') {
+        this.buildMenus();
+        this.ui.updateTitle(this.progression, this.hasResumableSnapshot());
+      }
+    });
     window.addEventListener('pagehide', () => P.flushCloud());
     document.addEventListener('visibilitychange', () => { if (document.hidden) P.flushCloud(); });
   }
@@ -150,17 +163,17 @@ class Game {
   refreshAccountButtons() {
     const si = document.getElementById('btn-sign-in');
     const inv = document.getElementById('btn-invite');
-    si.textContent = ACCOUNT.signIn;
+    si.textContent = acct().signIn;
     si.hidden = !this.platform.canSignIn();
-    inv.textContent = ACCOUNT.invite;
+    inv.textContent = acct().invite;
     inv.hidden = !this.platform.tokenHosted;
   }
 
   async copyInvite() {
     const link = this.platform.inviteLink();
     if (!link) return;
-    try { await navigator.clipboard.writeText(link); this.ui.toast(ACCOUNT.inviteCopied); }
-    catch { this.ui.toast(`${ACCOUNT.inviteFailed} ${link}`); }
+    try { await navigator.clipboard.writeText(link); this.ui.toast(acct().inviteCopied); }
+    catch { this.ui.toast(`${acct().inviteFailed} ${link}`); }
   }
 
   actionFor(code) {
@@ -181,12 +194,13 @@ class Game {
   buildMenus() {
     const daily = dailyContent(this.platform.serverNow());
     const modes = [
-      { id: 'journey', name: 'Journey', description: 'Forty staged trials across five tiers. Mastery every eighth.', meta: `${this.progression.journeyUnlocked - 1}/40 unlocked` },
-      { id: 'daily', name: 'Daily Challenge', description: `One shared seed for everyone today: ${daily.id}. Ranked board.`, meta: 'ranked' },
-      { id: 'practice', name: 'Practice', description: 'Selectable difficulty, undo and hints, never rated.', meta: 'casual' },
-      { id: 'challenge', name: 'Challenges', description: 'Constrained trials: flawless runs, sprints, thickets of steel.', meta: 'casual' },
-      { id: 'tutorial', name: 'Learn', description: 'Four short interactive lessons, one rule at a time.', meta: 'tutorial' },
+      { id: 'journey', name: t('mode.journey'), description: t('mode.journey.d'), meta: t('mode.journey.m', { n: this.progression.journeyUnlocked - 1 }) },
+      { id: 'daily', name: t('mode.daily'), description: t('mode.daily.d', { id: daily.id }), meta: t('mode.ranked') },
+      { id: 'practice', name: t('mode.practice'), description: t('mode.practice.d'), meta: t('mode.casual') },
+      { id: 'challenge', name: t('mode.challenge'), description: t('mode.challenge.d'), meta: t('mode.casual') },
+      { id: 'tutorial', name: t('mode.tutorial'), description: t('mode.tutorial.d'), meta: t('mode.tutorial.m') },
     ];
+    this.modeList = 'menus';
     this.ui.buildModeList(modes);
     this.ui.buildJourneyGrid(JOURNEY, this.progression);
     this.daily = daily;
@@ -203,40 +217,44 @@ class Game {
     }
   }
 
-  showPracticeSetup() {
+  showPracticeSetup(rerender = false) {
     const modes = ['easy', 'normal', 'hard', 'expert', 'master'].map((d) => ({
-      id: `practice:${d}`, name: `Practice — ${d[0].toUpperCase()}${d.slice(1)}`,
-      description: { easy: 'Slow wheel, open ring, 3 misses.', normal: 'Steady spin, a few hazards.', hard: 'Sigils and surging speed.', expert: 'Pulsing wheel, thin margins.', master: 'One miss. No mercy.' }[d],
-      meta: 'casual · undo + hints',
+      id: `practice:${d}`, name: t('prac.name', { d: t(`diff.${d}`) }),
+      description: t(`prac.${d}.d`),
+      meta: t('prac.meta'),
     }));
+    this.modeList = 'practice';
     this.ui.buildModeList(modes);
-    this.ui.showScreen('modes');
+    if (!rerender) this.ui.showScreen('modes');
   }
 
-  showChallengePick() {
-    const modes = CHALLENGES.map((c) => ({ id: `challenge:${c.id}`, name: c.name, description: c.description, meta: 'challenge · casual' }));
+  showChallengePick(rerender = false) {
+    const modes = CHALLENGES.map((c) => ({ id: `challenge:${c.id}`, name: t(`ch.${c.id}`, null, c.name), description: t(`chd.${c.id}`, null, c.description), meta: t('ch.meta') }));
+    this.modeList = 'challenge';
     this.ui.buildModeList(modes);
-    this.ui.showScreen('modes');
+    if (!rerender) this.ui.showScreen('modes');
   }
 
-  showTutorialPick() {
-    const modes = TUTORIALS.map((t, i) => ({
-      id: `tutorial:${t.id}`, name: t.name,
-      description: t.steps[0],
-      meta: this.progression.tutorialsDone[t.id] ? 'completed ✓' : `lesson ${i + 1} of 4`,
+  showTutorialPick(rerender = false) {
+    const modes = TUTORIALS.map((c, i) => ({
+      id: `tutorial:${c.id}`, name: contentName(c),
+      description: tutorialStepText(c, 0),
+      meta: this.progression.tutorialsDone[c.id] ? t('tut.done') : t('tut.lesson', { n: i + 1 }),
     }));
+    this.modeList = 'tutorial';
     this.ui.buildModeList(modes);
-    this.ui.showScreen('modes');
+    if (!rerender) this.ui.showScreen('modes');
   }
 
-  prepareContent(content, { ranked = false } = {}) {
+  prepareContent(content, { ranked = false, rerender = false } = {}) {
     this.pendingContent = content;
+    this.pendingRanked = ranked;
     const secs = Math.round(content.par.ticks / SIM_FPS);
     this.ui.showSetup(content, {
-      ranked,
+      ranked, rerender,
       duration: content.timeLimitTicks
-        ? `${Math.round(content.timeLimitTicks / SIM_FPS)}s limit`
-        : secs < 90 ? `about ${secs}s` : `about ${Math.round(secs / 60)} min`,
+        ? t('dur.limit', { n: Math.round(content.timeLimitTicks / SIM_FPS) })
+        : secs < 90 ? t('dur.secs', { n: secs }) : t('dur.mins', { n: Math.round(secs / 60) }),
     });
   }
 
@@ -261,12 +279,14 @@ class Game {
     this.ui.buildRailActions(this.railActions(content));
     this.ui.updateHud(this.session.state, content, this.hudFlags());
     this.ui.updateBoardMirror(this.session.state);
-    this.ui.announce(`${content.name}. Embed ${content.goal} blades. ${content.missesAllowed} misses allowed.`);
+    this.ui.announce(t('an.start', { name: contentName(content), goal: content.goal, m: content.missesAllowed }));
+    this.hintTicks = null;
 
     // tutorial steps as banner
+    this.tutorialStep = null;
     if (content.kind === 'tutorial') {
       this.tutorialStep = 0;
-      this.ui.showTutorialBanner(content.steps[0]);
+      this.ui.showTutorialBanner(tutorialStepText(content, 0));
     }
 
     this.phase = 'countdown';
@@ -276,10 +296,10 @@ class Game {
   railActions(content) {
     const acts = [];
     if (content.kind === 'practice' || content.kind === 'tutorial') {
-      acts.push({ label: 'Undo (U)', action: 'undo' }, { label: 'Hint (H)', action: 'hint' });
+      acts.push({ label: t('rail.undo'), action: 'undo' }, { label: t('rail.hint'), action: 'hint' });
     }
-    if (content.kind === 'practice') acts.push({ label: 'Restart (R)', action: 'restart' });
-    acts.push({ label: 'Pause (P)', action: 'pause' });
+    if (content.kind === 'practice') acts.push({ label: t('rail.restart'), action: 'restart' });
+    acts.push({ label: t('rail.pause'), action: 'pause' });
     return acts;
   }
 
@@ -299,14 +319,15 @@ class Game {
     const step = () => {
       if (this.phase !== 'countdown') return;
       if (i < steps.length) {
-        this.ui.showCountdown(steps[i]);
+        this.ui.showCountdown(steps[i] === 'GO' ? t('count.go') : steps[i]);
         this.audio.event(i === steps.length - 1 ? 'go' : 'tick');
         i++;
         setTimeout(step, stepMs);
       } else {
         this.ui.showCountdown(null);
         if (this.session?.content.kind === 'tutorial') {
-          this.ui.showTutorialBanner(this.session.content.steps[1] || null);
+          this.tutorialStep = 1;
+          this.ui.showTutorialBanner(tutorialStepText(this.session.content, 1) || null);
         }
         this.phase = 'active';
         this.accumulator = 0;
@@ -324,7 +345,7 @@ class Game {
     this.renderer?.interruptSwoop();
     const { applied, events, error } = this.session.throw();
     if (!applied) {
-      if (error !== 'duplicate-command') this.ui.announceAlert('That throw was not allowed.');
+      if (error !== 'duplicate-command') this.ui.announceAlert(t('an.notAllowed'));
       return;
     }
     this.audio.event('throw');
@@ -334,13 +355,14 @@ class Game {
       if (ev.type === 'embed') {
         this.audio.event('embed', { combo: ev.combo });
         if (ev.combo >= 3) this.audio.event('combo', { combo: ev.combo });
-        this.ui.announce(`Embedded. ${ev.precision} precision points${ev.combo > 1 ? `, combo x${ev.combo}` : ''}.`);
+        this.ui.announce(ev.combo > 1 ? t('an.embeddedCombo', { p: ev.precision, c: ev.combo }) : t('an.embedded', { p: ev.precision }));
       } else if (ev.type === 'miss') {
         this.audio.event(ev.blockedBy === 'hit-marker' ? 'miss-marker' : 'miss-blade');
         if (this.settings.haptics && navigator.vibrate) navigator.vibrate([40, 30, 40]);
         this.ui.announceAlert(ev.blockedBy === 'hit-marker'
-          ? 'Miss — you struck a warded sigil!'
-          : 'Miss — your blade struck steel.');
+          ? t('an.missMarker')
+          : t('an.missBlade'));
+        this.hintTicks = null;
         this.ui.setHintLine('');
       }
     }
@@ -402,14 +424,26 @@ class Game {
     const line = document.getElementById('results-lb');
     if (!line) return;
     const seq = (this.lbSeq = (this.lbSeq || 0) + 1);
+    this.lbResult = null;
     if (!this.platform.tokenHosted || kind === 'practice' || kind === 'tutorial') { line.hidden = true; return; }
     line.hidden = false;
-    line.textContent = ACCOUNT.lbPosting;
+    this.lbResult = { pending: true };
+    this.renderLbLine();
     this.platform.submitScore(total).then((r) => {
       if (seq !== this.lbSeq) return;
-      line.textContent = !r.posted ? ACCOUNT.lbNotPosted
-        : r.rank ? ACCOUNT.lbRank.replace('{rank}', r.rank) : ACCOUNT.lbPosted;
+      this.lbResult = r;
+      this.renderLbLine();
     });
+  }
+
+  /** Results-screen leaderboard line from the stored outcome (re-rendered on a language change, never reposted). */
+  renderLbLine() {
+    const line = document.getElementById('results-lb');
+    const r = this.lbResult;
+    if (!line || !r) return;
+    const A = acct();
+    line.textContent = r.pending ? A.lbPosting : !r.posted ? A.lbNotPosted
+      : r.rank ? A.lbRank.replace('{rank}', r.rank) : A.lbPosted;
   }
 
   pause(reason = 'user') {
@@ -438,6 +472,8 @@ class Game {
   leaveToTitle() {
     this.session = null;
     this.phase = 'title';
+    this.tutorialStep = null;
+    this.hintTicks = null;
     this.audio.stopMusic();
     this.audio.stopAmbience();
     this.ui.showTutorialBanner(null);
@@ -540,14 +576,12 @@ class Game {
       case 'daily': this.prepareContent(this.daily, { ranked: true }); break;
       case 'leaderboard': {
         this.ui.showScreen('leaderboard');
-        this.ui.renderLeaderboard(null, 'Loading…');
+        this.lbView = { entries: null, note: 'lb.loading' };
+        this.ui.renderLeaderboard(null, t('lb.loading'));
         this.platform.fetchLeaderboard().then((res) => {
-          if (res.ok) this.ui.renderLeaderboard(res.entries, '');
-          else {
-            this.ui.renderLeaderboard([], this.platform.tokenHosted
-              ? 'Leaderboards are not available for this game yet.'
-              : 'Leaderboards are only available when the game is launched from the platform.');
-          }
+          this.lbView = res.ok ? { entries: res.entries, note: '' }
+            : { entries: [], note: this.platform.tokenHosted ? 'lb.notYet' : 'lb.notHosted' };
+          this.ui.renderLeaderboard(this.lbView.entries, this.lbView.note ? t(this.lbView.note) : '');
         });
         break;
       }
@@ -583,8 +617,8 @@ class Game {
           }
           this.ui.updateHud(this.session.state, this.session.content, this.hudFlags());
           this.ui.updateBoardMirror(this.session.state);
-          this.ui.announce('Undone.');
-        } else this.ui.announce('Nothing to undo.');
+          this.ui.announce(t('an.undone'));
+        } else this.ui.announce(t('an.nothingUndo'));
         break;
       }
       case 'hint': {
@@ -592,7 +626,8 @@ class Game {
         const h = this.session.hint();
         if (!h) break;
         this.audio.event('hint');
-        const text = h.ticksAway <= 1 ? 'Throw now!' : `Wait ${(h.ticksAway / SIM_FPS).toFixed(1)}s for a wide gap…`;
+        this.hintTicks = h.ticksAway;
+        const text = this.hintText();
         this.ui.setHintLine(text);
         this.ui.announce(text);
         break;
@@ -607,7 +642,7 @@ class Game {
         this.progression = store.getProgression();
         this.buildMenus();
         this.ui.updateTitle(this.progression, false);
-        this.ui.announce('All progress erased.');
+        this.ui.announce(t('an.erased'));
         break;
       case 'overlay-open':
         if (this.phase === 'active' || this.phase === 'countdown') {
@@ -621,6 +656,46 @@ class Game {
       case 'settings-closed': break;
       case 'title-shown': break;
       default: break;
+    }
+  }
+
+  hintText() {
+    const n = this.hintTicks;
+    if (n == null) return '';
+    return n <= 1 ? t('hint.now') : t('hint.wait', { s: (n / SIM_FPS).toFixed(1) });
+  }
+
+  /**
+   * Settings → Language (or the platform's preferred language) changed: re-render every
+   * visible string in place — menus, briefing, HUD, rails, results, help, account
+   * buttons — without restarting the round, moving focus or reposting a score.
+   */
+  onLanguageChange() {
+    if (this.phase === 'boot') return;
+    const screen = this.ui.currentScreen;
+    this.ui.buildHelp(this.keyLabels());
+    this.ui.relabelGraphics();
+    this.refreshAccountButtons();
+    this.ui.setProfileChip(this.profileName || t('guest'));
+    const list = this.modeList;
+    this.buildMenus();
+    if (list === 'practice') this.showPracticeSetup(true);
+    else if (list === 'challenge') this.showChallengePick(true);
+    else if (list === 'tutorial') this.showTutorialPick(true);
+    this.ui.updateTitle(this.progression, this.hasResumableSnapshot());
+    if (screen === 'setup' && this.pendingContent) this.prepareContent(this.pendingContent, { ranked: this.pendingRanked, rerender: true });
+    if (this.ui.lastResults && this.phase === 'results') {
+      this.ui.showResults(this.ui.lastResults[0], { ...this.ui.lastResults[1], rerender: true });
+      this.renderLbLine();
+    }
+    if (this.lbView) this.ui.renderLeaderboard(this.lbView.entries, this.lbView.note ? t(this.lbView.note) : '');
+    if (this.session && this.phase !== 'results') {
+      const c = this.session.content;
+      this.ui.buildRailActions(this.railActions(c));
+      this.ui.updateHud(this.session.state, c, this.hudFlags());
+      this.ui.updateBoardMirror(this.session.state);
+      if (this.tutorialStep != null && c.kind === 'tutorial') this.ui.showTutorialBanner(tutorialStepText(c, this.tutorialStep) || null);
+      this.ui.setHintLine(this.hintText());
     }
   }
 
@@ -638,7 +713,7 @@ class Game {
       // Never leave the player pressing a button that silently does nothing.
       store.clearSnapshot();
       this.ui.updateTitle(this.progression, false);
-      this.ui.announceAlert('That paused round could no longer be restored.');
+      this.ui.announceAlert(t('an.cantRestore'));
       return;
     }
     this.session = session;
@@ -653,10 +728,12 @@ class Game {
     this.ui.setPlayingChrome(true);
     this.ui.showScreen(null);
     this.ui.buildRailActions(this.railActions(content));
+    this.tutorialStep = null;
+    this.hintTicks = null;
     this.ui.updateHud(session.state, content, this.hudFlags());
     this.ui.updateBoardMirror(session.state);
     this.phase = 'active';
-    this.ui.announce('Round resumed from where you left off.');
+    this.ui.announce(t('an.resumed'));
   }
 
   findContentById(id) {
@@ -775,11 +852,12 @@ class Game {
 
 const game = new Game();
 window.__game = game; // debug/e2e handle
+onLanguage(() => game.onLanguageChange());
 game.boot().catch((err) => {
   console.error('Boot failed:', err);
   const fb = document.getElementById('canvas-fallback');
   fb.hidden = false;
-  fb.querySelector('p').textContent = 'The game failed to start: ' + err.message;
+  fb.querySelector('p').textContent = t('boot.failed', { m: err.message });
 });
 
 export { game };

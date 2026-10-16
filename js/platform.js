@@ -110,6 +110,18 @@ export class Platform {
     return true;
   }
 
+  /**
+   * fn(remoteDoc) when another device saved first: the SDK refused the
+   * conditional PUT and emitted 'saveconflict'. The cloud copy is re-read
+   * (which lifts the SDK's write block); the caller merges and saves again.
+   */
+  onSaveConflict(fn) {
+    if (!this.sh) return () => {};
+    return this.sh.on('saveconflict', () => {
+      this.sh.loadJSON().then((remote) => fn(remote), () => {});
+    });
+  }
+
   flushCloud() { return this.tokenHosted ? this.sh.flushSave(true) : Promise.resolve(false); }
 
   /** PATCH the settings keys that changed since the last mirror. */

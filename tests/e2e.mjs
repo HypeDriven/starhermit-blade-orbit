@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { stubStarHermit, launchToken } from './starhermit-e2e.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SHOT = (n) => `/tmp/bo-e2e-${n}.png`;
@@ -56,7 +57,7 @@ const browser = await chromium.launch({
   args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
   env: browserEnv,
 });
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
 page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${currentStep}] console ${m.type()}: ${m.text()}`); });
@@ -65,6 +66,7 @@ let currentStep = 'startup';
 // Standalone (no launch token): no same-origin /api or /ws request, ever.
 const ownServerHits = [];
 const watchOwnServer = (p) => p.on('request', (r) => {
+  if (r.headers().authorization) return; // signed-in (launch token) steps talk to the stubbed StarHermit API
   const u = new URL(r.url());
   if (u.origin === new URL(BASE).origin && /^\/(api|ws)(\/|$)/.test(u.pathname)) ownServerHits.push(u.pathname);
 });
@@ -237,6 +239,61 @@ await step('daily result recorded locally, no score submission', async () => {
   if (typeof recorded !== 'number') throw new Error('daily result not recorded locally');
 });
 
+await step('Language: Automatic follows the StarHermit preferred language; Settings → Language re-renders a paused round live and saves ui.language; report a problem', async () => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const calls = await stubStarHermit(page, { preferredLanguage: 'fr-CA' });
+  await page.goto('about:blank');
+  await page.goto(`${BASE}/#game_token=${launchToken()}`, { waitUntil: 'load' });
+  await page.waitForFunction(() => window.__game?.phase === 'title' && document.documentElement.lang === 'fr-CA', null, { timeout: 15000 });
+  if ((await page.textContent('#btn-play')) !== 'Jouer') throw new Error('title not in fr-CA');
+  await page.click('#btn-play');
+  await page.locator('.card', { hasText: 'Entraînement' }).first().click();
+  await page.locator('.card', { hasText: 'Entraînement : Facile' }).click();
+  if (!/Entraînement : Facile/.test(await page.textContent('#setup-details h3'))) throw new Error('briefing not localized');
+  await page.click('#btn-setup-start');
+  await page.waitForFunction(() => window.__game.phase === 'active', null, { timeout: 8000 });
+  if ((await page.textContent('#hud .hud-block:nth-child(2) .hud-label')) !== 'Pointage') throw new Error('HUD not in fr-CA');
+  await page.evaluate(() => window.__game.doThrow());
+  await page.waitForTimeout(250);
+  await page.click('#btn-pause');
+  await page.waitForSelector('#screen-pause:not([hidden])');
+  const before = await page.evaluate(() => JSON.stringify(window.__game.session.state));
+  await page.click('#btn-pause-settings');
+  const choice = page.locator('#gfx-section [data-game-language="choice"]');
+  await choice.waitFor({ state: 'attached' });
+  await choice.scrollIntoViewIfNeeded();
+  const autoLabel = await choice.locator('option').first().textContent();
+  if (!/^Automatique — Français \(Canada\)$/.test(autoLabel)) throw new Error('Automatic label not resolved: ' + autoLabel);
+  await choice.selectOption('it-IT');
+  await page.waitForFunction(() => document.documentElement.lang === 'it-IT');
+  await page.waitForFunction(() => /Salvato/.test(document.querySelector('[data-game-language="status"]').textContent));
+  if (calls.settings['ui.language']?.choice !== 'it-IT') throw new Error('ui.language not saved: ' + JSON.stringify(calls.settings));
+  if ((await page.textContent('#settings-heading')) !== 'Impostazioni') throw new Error('settings heading not re-rendered');
+  if ((await page.textContent('[data-gfx-text="graphics"]')) !== 'Grafica') throw new Error('graphics section not re-rendered');
+  if ((await choice.inputValue()) !== 'it-IT') throw new Error('language control lost its value');
+  await page.locator('[data-game-report="title"]').scrollIntoViewIfNeeded();
+  await page.fill('[data-game-report="title"]', 'Test report');
+  await page.click('[data-game-report="send"]');
+  await page.waitForFunction(() => /Grazie/.test(document.querySelector('[data-game-report="status"]').textContent));
+  if (!calls.reports?.[0] || calls.reports[0].kind !== 'bug') throw new Error('report not posted');
+  await page.screenshot({ path: SHOT('language') });
+  await page.click('#btn-settings-back');
+  await page.waitForSelector('#screen-pause:not([hidden])');
+  if ((await page.textContent('#pause-heading')) !== 'In pausa') throw new Error('pause screen not re-rendered');
+  if ((await page.textContent('#hud .hud-block:nth-child(2) .hud-label')) !== 'Punti') throw new Error('HUD not re-rendered');
+  if (!/^Allenamento: Facile$/.test(await page.textContent('#rail-stage'))) throw new Error('rail not re-rendered: ' + await page.textContent('#rail-stage'));
+  const after = await page.evaluate(() => JSON.stringify(window.__game.session.state));
+  if (before !== after) throw new Error('round state changed across the language change');
+  await page.click('#btn-pause-settings');
+  await choice.selectOption('auto');
+  await page.waitForFunction(() => document.documentElement.lang === 'fr-CA');
+  await page.click('#btn-settings-back');
+  await page.click('#btn-leave');
+  await page.waitForSelector('#screen-title:not([hidden])');
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await page.goto('about:blank');
+});
+
 /* Graphics settings through the visible UI: preset switch, one override, persistence
  * across reload, at desktop and mobile viewports. */
 async function graphicsFlow(p, label) {
@@ -295,7 +352,7 @@ await step('graphics settings: desktop (1280x800)', async () => {
 });
 
 await step('graphics settings: mobile (390x844, touch)', async () => {
-  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  const ctx = await browser.newContext({ locale: 'en-US', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   const mp = await ctx.newPage();
   watchOwnServer(mp);
   mp.on('pageerror', (e) => errors.push(`mobile pageerror: ${e.message}`));

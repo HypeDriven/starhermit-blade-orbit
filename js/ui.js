@@ -9,7 +9,8 @@ import { THEMES } from './content.js';
 import { ACHIEVEMENTS } from './session.js';
 import { SIM_FPS } from './rules.js';
 import { CATEGORIES, PRESETS, presetTier, normalizePreset } from './gfx.js';
-import { gfxText, pickLocale } from './gfx-i18n.js';
+import { gfxText } from './gfx-i18n.js';
+import { t, getLang } from './i18n.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -69,7 +70,7 @@ class UI {
     on('btn-hint', () => this.h.action('hint'));
     on('btn-replay-tutorials', () => this.h.action('replay-tutorials'));
     on('btn-reset-progress', () => {
-      if (confirm('Erase all journey progress, scores, and achievements on this device?')) {
+      if (confirm(t('confirm.reset'))) {
         this.h.action('reset-progress');
       }
     });
@@ -113,16 +114,14 @@ class UI {
 
   /** Build and wire the Graphics section (preset, render scale, per-category overrides, toggles). */
   bindGraphics() {
-    const langs = navigator.languages?.length ? navigator.languages : [navigator.language];
-    const t = (this.gfxT = gfxText(pickLocale(langs)));
-    $('gfx-section').lang = t.locale;
-    for (const el of document.querySelectorAll('#gfx-section [data-gfx-text]')) el.textContent = t(el.dataset.gfxText);
-
+    this.relabelGraphics(false);
+    const t = this.gfxT;
     const host = $('gfx-categories');
     host.textContent = '';
     for (const [cat, tiers] of Object.entries(CATEGORIES)) {
       const label = document.createElement('label');
       const name = document.createElement('span');
+      name.dataset.gfxCatName = cat;
       name.textContent = t(cat);
       const sel = document.createElement('select');
       sel.id = `gfx-${cat}`;
@@ -131,6 +130,7 @@ class UI {
         const o = document.createElement('option');
         o.value = v;
         o.textContent = v === 'preset' ? t('fromPreset', { tier: '' }) : t(v);
+        o.dataset.gfxTier = v;
         sel.append(o);
       }
       sel.addEventListener('change', () => {
@@ -155,6 +155,18 @@ class UI {
       });
     }
     this.refreshGraphics();
+  }
+
+  /** Re-label the Graphics section in the current game language (live language switching). */
+  relabelGraphics(refresh = true) {
+    const gt = (this.gfxT = gfxText(getLang()));
+    $('gfx-section').lang = gt.locale;
+    for (const el of document.querySelectorAll('#gfx-section [data-gfx-text]')) el.textContent = gt(el.dataset.gfxText);
+    for (const el of document.querySelectorAll('#gfx-section [data-gfx-cat-name]')) el.textContent = gt(el.dataset.gfxCatName);
+    for (const o of document.querySelectorAll('#gfx-section option[data-gfx-tier]')) {
+      if (o.dataset.gfxTier !== 'preset') o.textContent = gt(o.dataset.gfxTier);
+    }
+    if (refresh) this.refreshGraphics();
   }
 
   /** Reflect saved graphics settings and the renderer's live info into the controls. */
@@ -243,7 +255,7 @@ class UI {
     $('btn-resume').hidden = !hasSnapshot;
     const done = Object.keys(progression.journeyStars).length;
     $('title-progress').textContent =
-      `Journey ${done}/40 cleared · Mastery ${progression.masteryXp} XP · ${progression.sessionsPlayed} sessions`;
+      t('title.progress', { done, xp: progression.masteryXp, n: progression.sessionsPlayed });
   }
 
   buildModeList(modes) {
@@ -275,8 +287,8 @@ class UI {
       cell.disabled = !unlocked;
       cell.setAttribute('aria-label',
         unlocked
-          ? `Stage ${n}: ${stage.name}${stars ? `, ${stars} stars` : ''}`
-          : `Stage ${n} locked`);
+          ? t('jcell.aria', { n, name: stage.name }) + (stars ? t('jcell.stars', { s: stars }) : '')
+          : t('jcell.locked', { n }));
       const num = document.createElement('span');
       num.textContent = n;
       const starSpan = document.createElement('span');
@@ -290,34 +302,34 @@ class UI {
     });
   }
 
-  showSetup(content, { ranked, duration, extra }) {
+  showSetup(content, { ranked, duration, extra, rerender }) {
     const host = $('setup-details');
-    const missText = content.missesAllowed === 0 ? 'none — one slip ends it' : `${content.missesAllowed}`;
+    const missText = content.missesAllowed === 0 ? t('setup.noMisses') : `${content.missesAllowed}`;
     host.innerHTML = `
       <h3></h3>
       <p class="panel-sub"></p>
       <dl>
-        <dt>Goal</dt><dd data-f="goal"></dd>
-        <dt>Misses allowed</dt><dd data-f="misses"></dd>
-        <dt>Hazards</dt><dd data-f="hazards"></dd>
-        <dt>Par</dt><dd data-f="par"></dd>
-        <dt>Expected duration</dt><dd data-f="duration"></dd>
-        <dt>Players</dt><dd>1 (asynchronous score comparison)</dd>
-        <dt>Result</dt><dd><span class="ranked-flag ${ranked ? 'ranked' : 'casual'}">${ranked ? 'Ranked (daily board)' : 'Casual / unrated'}</span></dd>
+        <dt>${t('setup.goal')}</dt><dd data-f="goal"></dd>
+        <dt>${t('setup.misses')}</dt><dd data-f="misses"></dd>
+        <dt>${t('setup.hazards')}</dt><dd data-f="hazards"></dd>
+        <dt>${t('setup.par')}</dt><dd data-f="par"></dd>
+        <dt>${t('setup.duration')}</dt><dd data-f="duration"></dd>
+        <dt>${t('setup.players')}</dt><dd>${t('setup.playersV')}</dd>
+        <dt>${t('setup.result')}</dt><dd><span class="ranked-flag ${ranked ? 'ranked' : 'casual'}">${ranked ? t('setup.ranked') : t('setup.casual')}</span></dd>
         ${extra || ''}
       </dl>`;
-    host.querySelector('h3').textContent = content.name;
+    host.querySelector('h3').textContent = contentName(content);
     host.querySelector('.panel-sub').textContent = describeMechanics(content);
-    host.querySelector('[data-f="goal"]').textContent = `Embed ${content.goal} blades`;
+    host.querySelector('[data-f="goal"]').textContent = t('setup.goalV', { n: content.goal });
     host.querySelector('[data-f="misses"]').textContent = missText;
     const blades = (content.preplaced || []).filter((p) => p.type === 'blade').length;
     const markers = (content.preplaced || []).filter((p) => p.type === 'marker').length;
     host.querySelector('[data-f="hazards"]').textContent =
-      [blades && `${blades} embedded blade${blades > 1 ? 's' : ''}`,
-       markers && `${markers} warded sigil${markers > 1 ? 's' : ''}`].filter(Boolean).join(', ') || 'None';
-    host.querySelector('[data-f="par"]').textContent = `${content.par.score} pts`;
+      [blades && t(blades > 1 ? 'setup.bladesN' : 'setup.blades1', { n: blades }),
+       markers && t(markers > 1 ? 'setup.sigilsN' : 'setup.sigils1', { n: markers })].filter(Boolean).join(', ') || t('setup.none');
+    host.querySelector('[data-f="par"]').textContent = t('setup.parV', { n: content.par.score });
     host.querySelector('[data-f="duration"]').textContent = duration;
-    this.showScreen('setup');
+    if (!rerender) this.showScreen('setup');
   }
 
   // --- HUD ------------------------------------------------------------------
@@ -330,7 +342,7 @@ class UI {
     if (state.timeLimitTicks) {
       $('hud-timer-block').hidden = false;
       const left = Math.max(0, state.timeLimitTicks - state.tick);
-      $('hud-timer').textContent = `${Math.floor(left / SIM_FPS)}s`;
+      $('hud-timer').textContent = t('hud.timer', { n: Math.floor(left / SIM_FPS) });
     } else {
       $('hud-timer-block').hidden = true;
     }
@@ -338,11 +350,11 @@ class UI {
     $('btn-hint').hidden = !canHint;
     $('btn-throw').disabled = state.status !== 'active';
     // rails
-    $('rail-objective').textContent = `Embed ${state.goal} blades — ${state.embedded} placed, ${state.goal - state.embedded} to go.`;
-    $('rail-stage').textContent = content.name;
+    $('rail-objective').textContent = t('rail.objectiveV', { goal: state.goal, done: state.embedded, left: state.goal - state.embedded });
+    $('rail-stage').textContent = contentName(content);
     $('rail-status').textContent =
-      `Score ${totalOf(state)} · misses ${state.misses}/${state.missesAllowed}` +
-      (state.comboStreak > 1 ? ` · combo x${state.comboStreak}` : '');
+      t('rail.statusV', { score: totalOf(state), m: state.misses, max: state.missesAllowed }) +
+      (state.comboStreak > 1 ? t('rail.combo', { n: state.comboStreak }) : '');
   }
 
   buildRailActions(actions) {
@@ -408,20 +420,22 @@ class UI {
 
   // --- results --------------------------------------------------------------
 
-  showResults(report, { achievements, isBest, nextStage, best }) {
+  showResults(report, opts) {
+    this.lastResults = [report, opts];
+    const { achievements, isBest, nextStage, best } = opts;
     const won = report.won;
     const headline = $('results-headline');
-    headline.textContent = won ? 'Wheel Cleared!' : headlineForReason(report.reason);
+    headline.textContent = won ? t('r.won') : headlineForReason(report.reason);
     headline.className = `results-headline ${won ? 'won' : 'lost'}`;
 
     const tbody = $('results-table').querySelector('tbody');
     tbody.replaceChildren();
     const rows = [
-      ['Blades embedded', `${report.embedded} × 100`, report.components.hits],
-      ['Spacing precision', '', report.components.precision],
-      ['Combo bonuses', `best x${report.bestCombo}`, report.components.combo],
-      ['Time bonus', report.par.ticks ? `par ${Math.round(report.par.ticks / SIM_FPS)}s` : '', report.components.timeBonus],
-      ['Miss penalties', `${report.misses} miss${report.misses === 1 ? '' : 'es'}`, report.components.missPenalty],
+      [t('r.embedded'), `${report.embedded} × 100`, report.components.hits],
+      [t('r.precision'), '', report.components.precision],
+      [t('r.combo'), t('r.bestCombo', { n: report.bestCombo }), report.components.combo],
+      [t('r.timeBonus'), report.par.ticks ? t('r.par', { n: Math.round(report.par.ticks / SIM_FPS) }) : '', report.components.timeBonus],
+      [t('r.missPen'), t(report.misses === 1 ? 'r.miss1' : 'r.missN', { n: report.misses }), report.components.missPenalty],
     ];
     for (const [label, note, value] of rows) {
       const tr = document.createElement('tr');
@@ -432,16 +446,17 @@ class UI {
     }
     const tr = document.createElement('tr');
     tr.className = 'total';
-    tr.innerHTML = '<td>Total</td><td></td>';
+    tr.innerHTML = '<td></td><td></td>';
+    tr.children[0].textContent = t('r.total');
     tr.children[1].textContent = String(report.total);
     tbody.appendChild(tr);
 
     $('results-stats').textContent =
-      `Time ${(report.ticks / SIM_FPS).toFixed(1)}s · throws ${report.embedded + report.misses}` +
-      (report.invalid ? ` · invalid ${report.invalid}` : '');
+      t('r.stats', { t: (report.ticks / SIM_FPS).toFixed(1), n: report.embedded + report.misses }) +
+      (report.invalid ? t('r.invalid', { n: report.invalid }) : '');
     $('results-best').textContent = isBest
-      ? 'New personal best for this stage!'
-      : best ? `Personal best: ${best.total}` : '';
+      ? t('r.newBest')
+      : best ? t('r.best', { n: best.total }) : '';
 
     const achHost = $('results-achievements');
     achHost.replaceChildren();
@@ -449,26 +464,22 @@ class UI {
       const def = ACHIEVEMENTS.find((a) => a.key === key);
       const chip = document.createElement('span');
       chip.className = 'achievement-chip';
-      chip.textContent = `🏅 ${def ? def.name : key}`;
+      chip.textContent = `🏅 ${def ? t('ach.' + key, null, def.name) : key}`;
       achHost.appendChild(chip);
     }
 
     $('btn-results-next').hidden = !(won && nextStage);
+    if (opts.rerender) return;
     this.showScreen('results');
-    this.announce(headline.textContent + `. Total score ${report.total}.`);
+    this.announce(t('r.announce', { h: headline.textContent, n: report.total }));
   }
 
   // --- help -----------------------------------------------------------------
 
   buildHelp(keys = null) {
     const cards = [
-      { title: 'The wheel turns', body: 'The timber target spins and surges. The marked notch at six o\'clock is where your blade lands.' },
-      { title: 'Throw into gaps', body: 'Tap, click, or press SPACE to throw. The blade sticks where the wheel is at that instant.' },
-      { title: 'Steel is a hazard', body: 'Hitting a blade already in the wood — yours or one placed before — counts as a miss.' },
-      { title: 'Sigils are warded', body: 'Hexagonal glowing sigils are protected. Striking one costs double and ends flawless runs.' },
-      { title: 'Precision pays', body: 'Wide, centered gaps earn up to +100 precision points per blade. Consecutive hits build combo bonuses.' },
-      { title: 'Clear the count', body: 'Embed every required blade before your misses run out. Beat par score for three stars.' },
-    ];
+    ].concat(['wheel', 'gaps', 'steel', 'sigils', 'precision', 'clear'].map((k) => ({ title: t(`h.${k}`), body: t(`h.${k}.b`) })));
+    this.helpKeys = keys;
     const host = $('help-cards');
     host.replaceChildren();
     for (const c of cards) {
@@ -479,15 +490,16 @@ class UI {
       el.querySelector('p').textContent = c.body;
       host.appendChild(el);
     }
-    const k = (a, fallback) => (keys && keys[a]) || fallback;
+    const keyName = (s) => String(s).split(' / ').map((x) => t('key.' + x, null, x)).join(' / ');
+    const k = (a, fallback) => keyName((keys && keys[a]) || fallback);
     const controls = [
-      [k('throw', 'SPACE / ENTER') + ' / tap', 'Throw blade'],
-      [k('pause', 'P') + ' or ESC', 'Pause / resume'],
-      [k('undo', 'U'), 'Undo (practice & tutorials)'],
-      [k('hint', 'H'), 'Hint (practice & tutorials)'],
-      [k('restart', 'R'), 'Restart stage (practice)'],
-      ['TAB / SHIFT+TAB', 'Navigate controls'],
-      ['Gamepad: A throw · Start pause · B back', ''],
+      [k('throw', 'SPACE / ENTER') + t('ctl.tap'), t('ctl.throw')],
+      [k('pause', 'P') + t('ctl.esc'), t('ctl.pause')],
+      [k('undo', 'U'), t('ctl.undo')],
+      [k('hint', 'H'), t('ctl.hint')],
+      [k('restart', 'R'), t('ctl.restart')],
+      ['TAB / SHIFT+TAB', t('ctl.nav')],
+      [t('ctl.gamepad'), ''],
     ];
     const list = $('help-controls');
     list.replaceChildren();
@@ -510,8 +522,11 @@ class UI {
     const blades = state.slots.filter((s) => s.type === 'blade').length;
     const markers = state.slots.filter((s) => s.type === 'marker').length;
     $('board-mirror').textContent =
-      `Wheel rotating. ${blades} blade${blades === 1 ? '' : 's'} in the wood, ${markers} warded sigil${markers === 1 ? '' : 's'}. ` +
-      `${state.embedded} of ${state.goal} goal blades embedded. ${state.misses} of ${state.missesAllowed} misses used.`;
+      t('mirror.text', {
+        blades: t(blades === 1 ? 'mirror.blade1' : 'mirror.bladeN', { n: blades }),
+        sigils: t(markers === 1 ? 'mirror.sigil1' : 'mirror.sigilN', { n: markers }),
+        e: state.embedded, g: state.goal, m: state.misses, mx: state.missesAllowed,
+      });
   }
 
   setServerClock(text) { $('server-clock').textContent = text; }
@@ -550,6 +565,33 @@ class UI {
   }
 }
 
+const CHALLENGE_KEYS = { 'Flawless Edge': 'ch-perfect', 'Ember Sprint': 'ch-speed', 'Thicket of Steel': 'ch-dense', 'Warden\'s Trial': 'ch-warded' };
+
+/** Display name of a stage in the current language (content keeps its English name as data). */
+export function contentName(c) {
+  if (!c) return '';
+  if (c.kind === 'journey' && c.tier) {
+    const n = Number(String(c.id).replace(/^journey-/, ''));
+    const i = Number.isFinite(n) ? ((n - 1) % 8) + 1 : '';
+    return t(c.mastery ? 'stage.mastery' : 'stage.name', { tier: t(`tier.${c.tier - 1}`), n: i });
+  }
+  if (c.kind === 'tutorial') return t(`tut.${c.id}`, null, c.name);
+  if (c.kind === 'daily') return t('daily.name', { date: String(c.id).replace(/^daily-/, '') });
+  if (c.kind === 'practice') {
+    const m = /^Practice — (\w+)/.exec(c.name || '');
+    if (m) return t('prac.name', { d: t(`diff.${m[1].toLowerCase()}`) });
+  }
+  if (c.kind === 'challenge' && CHALLENGE_KEYS[c.name]) return t(`ch.${CHALLENGE_KEYS[c.name]}`, null, c.name);
+  return c.name;
+}
+
+/** Tutorial banner step `i` in the current language. */
+export function tutorialStepText(c, i) {
+  const en = c && c.steps ? c.steps[i] : null;
+  if (!en) return '';
+  return t(`tut.${c.id}.${i}`, null, en);
+}
+
 function totalOf(state) {
   const s = state.score;
   return s.hits + s.precision + s.combo + s.timeBonus + s.missPenalty;
@@ -557,21 +599,21 @@ function totalOf(state) {
 
 function headlineForReason(reason) {
   switch (reason) {
-    case 'marker-struck': return 'Sigil Struck — Run Ended';
-    case 'too-many-misses': return 'Out of Misses';
-    case 'time-expired': return 'Time Expired';
-    default: return 'Round Over';
+    case 'marker-struck': return t('r.marker');
+    case 'too-many-misses': return t('r.misses');
+    case 'time-expired': return t('r.time');
+    default: return t('r.over');
   }
 }
 
 function describeMechanics(content) {
   const parts = [];
-  if ((content.preplaced || []).some((p) => p.type === 'blade')) parts.push('hazard blades crowd the ring');
-  if ((content.preplaced || []).some((p) => p.type === 'marker')) parts.push('warded sigils protect arcs');
-  if (content.rotation.oscAmp) parts.push('the wheel surges and lulls');
-  if (content.rotation.triAmp) parts.push('a pulse drives the spin');
-  if (content.timeLimitTicks) parts.push(`a ${Math.round(content.timeLimitTicks / SIM_FPS)}s time limit presses you`);
-  return parts.length ? `Watch out: ${parts.join('; ')}.` : 'A clean wheel — learn the timing.';
+  if ((content.preplaced || []).some((p) => p.type === 'blade')) parts.push(t('mech.blades'));
+  if ((content.preplaced || []).some((p) => p.type === 'marker')) parts.push(t('mech.sigils'));
+  if (content.rotation.oscAmp) parts.push(t('mech.osc'));
+  if (content.rotation.triAmp) parts.push(t('mech.pulse'));
+  if (content.timeLimitTicks) parts.push(t('mech.time', { n: Math.round(content.timeLimitTicks / SIM_FPS) }));
+  return parts.length ? t('mech.watch', { list: parts.join('; ') }) : t('mech.clean');
 }
 
 export { THEMES };

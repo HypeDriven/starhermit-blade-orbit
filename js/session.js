@@ -177,6 +177,35 @@ function save(key, value) {
   }
 }
 
+const maxMap = (a = {}, b = {}) => {
+  const out = { ...(a || {}) };
+  for (const [k, v] of Object.entries(b || {})) out[k] = typeof v === 'number' && typeof out[k] === 'number' ? Math.max(out[k], v) : (out[k] ?? v);
+  return out;
+};
+
+/** Merge two cloud progress documents field by field, keeping the better value. */
+export function mergeCloudDocs(local, remote) {
+  const lp = (local && local.progression) || {};
+  const rp = (remote && remote.progression) || {};
+  const progression = { ...rp, ...lp };
+  for (const k of ['journeyUnlocked', 'masteryXp', 'totalThrows', 'totalEmbeds', 'sessionsPlayed']) {
+    if (lp[k] != null || rp[k] != null) progression[k] = Math.max(Number(lp[k]) || 0, Number(rp[k]) || 0);
+  }
+  progression.journeyStars = maxMap(lp.journeyStars, rp.journeyStars);
+  progression.dailyDone = maxMap(lp.dailyDone, rp.dailyDone);
+  progression.tutorialsDone = { ...(rp.tutorialsDone || {}), ...(lp.tutorialsDone || {}) };
+  progression.cosmetics = [...new Set([...(lp.cosmetics || []), ...(rp.cosmetics || [])])];
+  const scores = { ...((remote && remote.scores) || {}) };
+  for (const [id, e] of Object.entries((local && local.scores) || {})) {
+    if (!scores[id] || (e && e.total > scores[id].total)) scores[id] = e;
+  }
+  const achievements = { ...((remote && remote.achievements) || {}) };
+  for (const [k, ts] of Object.entries((local && local.achievements) || {})) {
+    achievements[k] = achievements[k] ? Math.min(achievements[k], ts) : ts;
+  }
+  return { v: 1, progression, scores, achievements };
+}
+
 // Keys that make up the cloud-saved progress document.
 const CLOUD_KEYS = ['progression', 'scores', 'achievements'];
 
@@ -198,6 +227,21 @@ export const store = {
       if (doc[k] && typeof doc[k] === 'object') {
         try { localStorage.setItem(LS_KEYS[k], JSON.stringify(doc[k])); } catch { /* non-fatal */ }
       }
+    }
+    return true;
+  },
+
+  /**
+   * Save conflict: fold another device's cloud document into local progress,
+   * keeping the better value of every field (furthest unlock, most stars, best
+   * score per stage, every achievement and finished lesson), then the caller
+   * saves the merged document again.
+   */
+  mergeCloud(remote) {
+    if (!remote || remote.v !== 1) return false;
+    const merged = mergeCloudDocs(this.exportCloud(), remote);
+    for (const k of CLOUD_KEYS) {
+      try { localStorage.setItem(LS_KEYS[k], JSON.stringify(merged[k])); } catch { /* non-fatal */ }
     }
     return true;
   },

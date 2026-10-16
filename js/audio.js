@@ -9,6 +9,7 @@
  */
 
 import { makeRng } from './rules.js';
+import { t } from './i18n.js';
 
 /** Logical event → authored sample basename (sfx/<name>.opus, see sfx/manifest.json). */
 const SFX_SAMPLES = {
@@ -257,19 +258,9 @@ export class AudioEngine {
   }
 
   captionFor(type, detail = {}) {
-    const captions = {
-      throw: 'Blade thrown',
-      embed: detail.combo >= 3 ? `Blade embedded — combo x${detail.combo}` : 'Blade embedded',
-      'miss-blade': 'Clang — blade struck steel',
-      'miss-marker': 'Warded sigil struck',
-      win: 'Stage cleared fanfare',
-      lose: 'Stage failed tone',
-      tick: 'Countdown tick',
-      go: 'Go signal',
-      achievement: 'Achievement unlocked',
-      combo: 'Combo chime',
-    };
-    if (captions[type]) this.caption(captions[type]);
+    const CAPTIONED = ['throw', 'embed', 'miss-blade', 'miss-marker', 'win', 'lose', 'tick', 'go', 'achievement', 'combo'];
+    if (!CAPTIONED.includes(type)) return;
+    this.caption(type === 'embed' && detail.combo >= 3 ? t('cap.embedCombo', { n: detail.combo }) : t(`cap.${type}`));
   }
 
   // --- ambience & adaptive music -------------------------------------------
