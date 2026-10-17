@@ -20,7 +20,19 @@ import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { rotationAt, makeRng, TAU, SLOT_HALF } from './rules.js';
 import { themeById } from './content.js';
-import { detectPreset, resolve, describe, SHADOW_MAP, PARTICLE_CAP } from './gfx.js';
+import { detectLevel, presetForLevel, resolve, describe, SHADOW_MAP, particleCap } from './gfx.js';
+
+// EffectComposer resizes every pass to the full frame (addPass / setSize); this keeps a pass at a
+// fraction of it (used for the preset budget's bloom resolution).
+function atScale(pass, k) {
+  const setSize = pass.setSize.bind(pass);
+  pass.setSize = (w, h) => setSize(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+  return pass;
+}
+
+
+// Per-preset budget (js/gfx.js BUDGETS) for the module-level mesh builders below.
+let BUD = { material: 'physical', mergedBlades: false, segments: 96, texture: 1024, particles: 1, embers: 70, bloomRes: 1 };
 
 // Authored framing constants (no magic offsets scattered through code)
 const FRAMING = {
@@ -89,9 +101,13 @@ class BladeRenderer {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     // Graphics settings: detected tier, resolved tiers, adaptive resolution, post chain.
-    this.gpu = gpuName(this.renderer.getContext());
-    this.detected = detectPreset(this.gpu, isTouchDevice());
-    this.q = resolve({}, this.detected);
+    // StarHermit hardware level (gpu-level.js) → Auto preset: Low 0, Balanced 4, High 10, Ultra 17.
+    const info = window.StarHermitGpu ? window.StarHermitGpu.info() : null;
+    this.gpu = info ? String(info.gpu || '') : gpuName(this.renderer.getContext());
+    this.level = info ? info.level : detectLevel(this.gpu, { mobile: isTouchDevice() });
+    this.detected = presetForLevel(this.level);
+    this.q = resolve({}, this.detected, this.level);
+    BUD = this.q.budget;
     this.adaptiveScale = 1;
     this._frames = [];
     this.fps = 0;
@@ -135,6 +151,7 @@ class BladeRenderer {
   /** Build (or rebuild) the stage for a content definition + theme. */
   loadContent(content, themeId) {
     this.content = content;
+    this.lastState = null;
     this.theme = themeById(themeId || content.theme);
     this.clearGroup(this.envGroup);
     this.clearGroup(this.stageGroup);
@@ -152,7 +169,7 @@ class BladeRenderer {
     this.buildEnvironment();
     this.buildWheel(content);
     this.buildReticle();
-    this.particles = new ParticlePool(this.fxGroup, PARTICLE_CAP[this.q.particles], `${content.seed}:fx`);
+    this.particles = new ParticlePool(this.fxGroup, particleCap(this.q), `${content.seed}:fx`);
     this.buildEmbers();
     this.applyGraphicsToScene();
     this.swoop = { active: !this.reducedMotion, t: 0 };
@@ -191,7 +208,7 @@ class BladeRenderer {
     const t = this.theme;
     const detailed = this.q.detail === 'detailed';
     // floor: plain, or worn stage boards with a soft pool of light under the wheel
-    const floorMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.floor), roughness: 0.95, envMapIntensity: 0.25 });
+    const floorMat = surfaceMat({ color: new THREE.Color(t.floor), roughness: 0.95, envMapIntensity: 0.25 });
     if (detailed) {
       floorMat.map = makePlankTexture(t, `${this.content.seed}:floor`);
       floorMat.color.set('#ffffff');
@@ -223,11 +240,11 @@ class BladeRenderer {
     this.envGroup.add(backdrop);
 
     // stage props: carved posts flanking the wheel; scenery density follows surface detail
-    const postMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.woodDark), roughness: 0.9, envMapIntensity: 0.3 });
+    const postMat = surfaceMat({ color: new THREE.Color(t.woodDark), roughness: 0.9, envMapIntensity: 0.3 });
     const postGeo = new THREE.CylinderGeometry(0.16, 0.22, 4.4, detailed ? 16 : 10);
     const capGeo = new THREE.SphereGeometry(0.24, detailed ? 20 : 10, detailed ? 14 : 8);
     const bandGeo = new THREE.TorusGeometry(0.19, 0.03, 8, 20);
-    const brass = () => new THREE.MeshStandardMaterial({ color: new THREE.Color(t.rim), roughness: 0.36, metalness: 0.85, envMapIntensity: 0.5 });
+    const brass = () => metalMat({ color: new THREE.Color(t.rim), roughness: 0.36, metalness: 0.85, envMapIntensity: 0.5 });
     for (const sx of [-2.6, 2.6]) {
       const post = new THREE.Mesh(postGeo, postMat);
       post.position.set(sx, 0, -0.6);
@@ -267,7 +284,7 @@ class BladeRenderer {
 
   /** Slow drifting embers / dust motes in the stage light (Particles: High, full motion). */
   buildEmbers() {
-    const n = 70;
+    const n = Math.max(1, this.q.budget.embers);
     const rng = makeRng(`${this.content.seed}:embers`);
     const pos = new Float32Array(n * 3);
     this.emberSeeds = [];
@@ -290,7 +307,7 @@ class BladeRenderer {
 
   updateEmbers(dt) {
     if (!this.embers) return;
-    this.embers.visible = this.q.particles === 'high';
+    this.embers.visible = this.q.particles === 'high' && this.q.budget.embers > 0;
     if (!this.embers.visible || this.reducedMotion) return;
     const attr = this.embers.geometry.attributes.position;
     const a = attr.array;
@@ -309,21 +326,17 @@ class BladeRenderer {
 
     // carved wooden face (procedural canvas texture, seeded)
     const detailed = this.q.detail === 'detailed';
-    const faceTex = makeWoodTexture(this.theme, `${content.seed}:wood`, detailed ? 1024 : 512);
-    // Varnished face: clearcoat sheen over the wood; carved grain doubles as a bump map.
-    this.faceMaterial = new THREE.MeshPhysicalMaterial({
-      map: faceTex, roughness: 0.72, metalness: 0.02, envMapIntensity: 0.18,
-      clearcoat: detailed ? 0.22 : 0, clearcoatRoughness: 0.4,
-      bumpMap: detailed ? faceTex : null, bumpScale: 2.2,
-    });
-    const face = new THREE.Mesh(new THREE.CircleGeometry(R, 96), this.faceMaterial);
+    const faceTex = makeWoodTexture(this.theme, `${content.seed}:wood`, faceTextureSize(this.q));
+    this.faceMaterial = makeFaceMaterial(faceTex, detailed);
+    const S = BUD.segments;
+    const face = new THREE.Mesh(new THREE.CircleGeometry(R, S), this.faceMaterial);
     face.receiveShadow = true;
     this.wheelGroup.add(face);
 
     // thickness / edge
     const edge = new THREE.Mesh(
-      new THREE.CylinderGeometry(R, R, 0.18, 96, 1, true),
-      new THREE.MeshStandardMaterial({ color: new THREE.Color(t.woodDark), roughness: 0.85, envMapIntensity: 0.3 })
+      new THREE.CylinderGeometry(R, R, 0.18, S, 1, true),
+      surfaceMat({ color: new THREE.Color(t.woodDark), roughness: 0.85, envMapIntensity: 0.3 })
     );
     edge.rotation.x = Math.PI / 2;
     edge.position.z = -0.09;
@@ -331,13 +344,13 @@ class BladeRenderer {
 
     // metal rim + rivets (instanced)
     const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(R, 0.05, 16, 120),
-      new THREE.MeshPhysicalMaterial({ color: new THREE.Color(t.rim), roughness: 0.34, metalness: 0.9, clearcoat: 0.2, clearcoatRoughness: 0.3, envMapIntensity: 0.45 })
+      new THREE.TorusGeometry(R, 0.05, Math.max(8, S / 6), Math.round(S * 1.25)),
+      metalMat({ color: new THREE.Color(t.rim), roughness: 0.34, metalness: 0.9, clearcoat: 0.2, clearcoatRoughness: 0.3, envMapIntensity: 0.45 })
     );
     rim.castShadow = true;
     this.wheelGroup.add(rim);
     const rivetGeo = new THREE.SphereGeometry(0.035, 12, 8);
-    const rivetMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.metal), roughness: 0.3, metalness: 0.95, envMapIntensity: 0.6 });
+    const rivetMat = metalMat({ color: new THREE.Color(t.metal), roughness: 0.3, metalness: 0.95, envMapIntensity: 0.6 });
     const rivets = new THREE.InstancedMesh(rivetGeo, rivetMat, 12);
     const rm = new THREE.Matrix4();
     for (let i = 0; i < 12; i++) {
@@ -349,10 +362,10 @@ class BladeRenderer {
     this.wheelGroup.add(rivets);
 
     // hub
-    const hubMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(t.rim), roughness: 0.38, metalness: 0.8, clearcoat: 0.2, envMapIntensity: 0.45 });
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.16, 32), hubMat);
+    const hubMat = metalMat({ color: new THREE.Color(t.rim), roughness: 0.38, metalness: 0.8, clearcoat: 0.2, envMapIntensity: 0.45 });
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.16, Math.max(16, S / 3)), hubMat);
     hub.rotation.x = Math.PI / 2;
-    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 12, 0, TAU, 0, Math.PI / 2), hubMat);
+    const boss = new THREE.Mesh(new THREE.SphereGeometry(0.2, Math.max(16, S / 3), 12, 0, TAU, 0, Math.PI / 2), hubMat);
     boss.rotation.x = Math.PI / 2;
     boss.scale.set(1, 0.55, 1);
     boss.position.z = 0.08;
@@ -366,7 +379,7 @@ class BladeRenderer {
     }
 
     // stand holding the wheel
-    const standMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(t.woodDark), roughness: 0.85, envMapIntensity: 0.3 });
+    const standMat = surfaceMat({ color: new THREE.Color(t.woodDark), roughness: 0.85, envMapIntensity: 0.3 });
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 2.4, 0.3), standMat);
     leg.position.set(0, -2.15, -0.25);
     const base = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.18, 0.8), standMat);
@@ -404,6 +417,7 @@ class BladeRenderer {
 
   /** Diff-sync embedded blade views from a rules snapshot. */
   syncState(state) {
+    this.lastState = state;
     let i = 0;
     for (const slot of state.slots) {
       if (!slot.embedded) continue;
@@ -609,26 +623,34 @@ class BladeRenderer {
   /** Apply saved graphics settings ({ preset, render_scale, adaptive, show_fps, <category> }) live. */
   setGraphics(saved) {
     const prev = this.q;
-    const g = resolve(saved || {}, this.detected);
+    const g = resolve(saved || {}, this.detected, this.level);
     this.q = g;
+    BUD = g.budget;
     this.adaptiveScale = 1;
     this._frames = [];
     this.postKey = null; // rebuild the post chain on the next frame
     this._fpsVisible(g.showFps);
     this.canvas.dataset.gfxPreset = g.preset;
     this.canvas.dataset.gfxAuto = String(g.auto);
-    if (this.content && prev.detail !== g.detail) {
+    const budgetChanged = prev.budget && ['material', 'mergedBlades', 'segments', 'texture', 'embers'].some((k) => prev.budget[k] !== g.budget[k]);
+    if (this.content && budgetChanged) {
+      // A different budget swaps meshes, materials and textures: rebuild the stage for this round.
+      const rot = this.wheelGroup.rotation.z, mode = this.reticleMode, st = this.lastState;
+      this.loadContent(this.content, this.theme.id);
+      this.wheelGroup.rotation.z = rot;
+      if (st) this.syncState(st);
+      this.setReticleMode(mode);
+    } else if (this.content && prev.detail !== g.detail) {
       // Scenery and texture resolution depend on detail: rebuild the stage dressing.
       this.clearGroup(this.envGroup);
       this.buildLights();
       this.buildEnvironment();
       const old = this.faceMaterial;
-      const tex = makeWoodTexture(this.theme, `${this.content.seed}:wood`, g.detail === 'detailed' ? 1024 : 512);
+      const tex = makeWoodTexture(this.theme, `${this.content.seed}:wood`, faceTextureSize(g));
       old.map?.dispose();
-      old.map = tex;
-      old.bumpMap = g.detail === 'detailed' ? tex : null;
-      old.clearcoat = g.detail === 'detailed' ? 0.22 : 0;
-      old.needsUpdate = true;
+      this.faceMaterial = makeFaceMaterial(tex, g.detail === 'detailed');
+      this.wheelGroup.traverse((o) => { if (o.material === old) o.material = this.faceMaterial; });
+      old.dispose();
     }
     this.applyGraphicsToScene();
     this.resize();
@@ -655,8 +677,8 @@ class BladeRenderer {
       pmrem.dispose();
     }
     this.scene.environment = g.reflections === 'on' ? this.envMap : null;
-    this.particles?.setCapacity(PARTICLE_CAP[g.particles]);
-    if (this.embers) this.embers.visible = g.particles === 'high';
+    this.particles?.setCapacity(particleCap(g));
+    if (this.embers) this.embers.visible = g.particles === 'high' && g.budget.embers > 0;
     // Materials pick up shadow-map and environment changes on recompile (only when those changed).
     const matKey = `${g.shadows}|${g.reflections}`;
     if (matKey === this._matKey) return;
@@ -672,6 +694,7 @@ class BladeRenderer {
     const px = [Math.round(this.size[0] * this.pixelRatio), Math.round(this.size[1] * this.pixelRatio)];
     return {
       gpu: this.gpu,
+      level: this.level,
       detected: this.detected,
       resolved: this.q,
       summary: describe(this.q, px, words),
@@ -736,7 +759,8 @@ class BladeRenderer {
       }
       if (g.bloom === 'on') {
         // High threshold: only sigils, sparks and bright steel highlights bloom.
-        composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.4, 0.35, 0.9));
+        const br = g.budget.bloomRes; // bloom at the budget's fraction of the canvas resolution
+        composer.addPass(atScale(new UnrealBloomPass(new THREE.Vector2(Math.round(W * br), Math.round(H * br)), 0.4, 0.35, 0.9), br));
       }
       composer.addPass(new OutputPass());
       if (g.grade === 'on') composer.addPass(new ShaderPass(GradeShader));
@@ -890,9 +914,77 @@ function getBladeGeos() {
  * A blade mesh. If `flight` it points along +Y for the throw arc;
  * otherwise it is placed on the wheel face at `angle` (local), tip inward.
  */
+// Low/Balanced blade variant: blade, handle, guard and pommel merged into one geometry with their
+// colours as vertex colours, drawn with one material (one draw call per blade, also when casting).
+const mergedBladeGeos = new Map(); // theme id -> geometry
+function mergedBladeGeometry(theme) {
+  if (mergedBladeGeos.has(theme.id)) return mergedBladeGeos.get(theme.id);
+  const g = getBladeGeos();
+  const parts = [[g.blade, theme.metal], [g.handle, theme.handle], [g.guard, theme.rim], [g.pommel, theme.rim]];
+  const flat = parts.map(([geo, color]) => [geo.index ? geo.toNonIndexed() : geo.clone(), new THREE.Color(color)]);
+  const total = flat.reduce((n, [geo]) => n + geo.getAttribute('position').count, 0);
+  const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3), col = new Float32Array(total * 3);
+  let o = 0;
+  for (const [geo, c] of flat) {
+    const p = geo.getAttribute('position'), n = geo.getAttribute('normal');
+    pos.set(p.array, o * 3); nor.set(n.array, o * 3);
+    for (let i = 0; i < p.count; i++) col.set([c.r, c.g, c.b], (o + i) * 3);
+    o += p.count;
+    geo.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.computeBoundingSphere();
+  out.userData.shared = true;
+  mergedBladeGeos.set(theme.id, out);
+  return out;
+}
+
+/** Wood/plain surfaces: Lambert on Low, Standard above. */
+function surfaceMat(o) {
+  if (BUD.material === 'lambert') return new THREE.MeshLambertMaterial({ color: o.color, map: o.map || null });
+  return new THREE.MeshStandardMaterial(o);
+}
+/** Metal parts: Phong on Low, Standard on Balanced, clearcoat Physical on High/Ultra when asked. */
+function metalMat(o) {
+  if (BUD.material === 'lambert') return new THREE.MeshPhongMaterial({ color: o.color, specular: 0x9a9a9a, shininess: 70 });
+  if (BUD.material === 'standard' || !o.clearcoat) {
+    const { clearcoat, clearcoatRoughness, ...rest } = o;
+    return new THREE.MeshStandardMaterial(rest);
+  }
+  return new THREE.MeshPhysicalMaterial(o);
+}
+/** Wheel face: varnished clearcoat with the carved grain as bump map (detail on, Physical budget). */
+function makeFaceMaterial(tex, detailed) {
+  if (BUD.material === 'lambert') return new THREE.MeshLambertMaterial({ map: tex });
+  const o = { map: tex, roughness: 0.72, metalness: 0.02, envMapIntensity: 0.18, bumpMap: detailed ? tex : null, bumpScale: 2.2 };
+  if (BUD.material === 'standard') return new THREE.MeshStandardMaterial(o);
+  return new THREE.MeshPhysicalMaterial({ ...o, clearcoat: detailed ? 0.22 : 0, clearcoatRoughness: 0.4 });
+}
+function faceTextureSize(q) {
+  return q.detail === 'detailed' ? q.budget.texture : Math.min(512, q.budget.texture);
+}
+
 function makeBladeMesh(theme, angle, flight) {
   const g = getBladeGeos();
   const group = new THREE.Group();
+  if (BUD.mergedBlades) {
+    const mat = BUD.material === 'lambert'
+      ? new THREE.MeshPhongMaterial({ vertexColors: true, specular: 0x8a8a8a, shininess: 80 })
+      : new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.75, envMapIntensity: 0.7 });
+    const mesh = new THREE.Mesh(mergedBladeGeometry(theme), mat);
+    mesh.castShadow = true;
+    group.add(mesh);
+    if (!flight) {
+      const r = FRAMING.bladeOrbitRadius;
+      group.position.set(Math.cos(angle) * r, Math.sin(angle) * r, 0.12);
+      group.rotation.z = angle - Math.PI / 2;
+      group.rotation.x = -0.12;
+    }
+    return group;
+  }
   const bladeMat = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(theme.metal), roughness: 0.24, metalness: 0.92, clearcoat: 0.2, clearcoatRoughness: 0.2, envMapIntensity: 0.8,
   });
@@ -1133,7 +1225,7 @@ class ParticlePool {
 
 function disposeObject(obj) {
   obj.traverse?.((o) => {
-    if (o.geometry && !Object.values(getBladeGeos()).includes(o.geometry)) o.geometry.dispose();
+    if (o.geometry && !o.geometry.userData.shared && !Object.values(getBladeGeos()).includes(o.geometry)) o.geometry.dispose();
     if (o.material) {
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats) { m.map?.dispose(); m.dispose(); }

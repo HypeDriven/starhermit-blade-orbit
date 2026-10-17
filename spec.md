@@ -28,7 +28,7 @@ listed once, at the end, under "Design intent not yet implemented".
 | `js/content.js` | Themes, stage generator, 40 Journey stages, 4 tutorials, daily seed, practice, 4 challenges, validators |
 | `js/session.js` | `Session` (commands, undo, replay envelope, snapshots), `verifyReplay`, `store` (localStorage), achievements |
 | `js/render.js` | Three.js stage: procedural wheel, blades, sigils, particles, embers, camera; graphics settings (`setGraphics`, `graphicsInfo`), post chain, adaptive resolution |
-| `js/gfx.js` | Pure graphics quality model: presets, categories, GPU detection, `resolve`, `presetTier`, `choosePreset`, `describe` |
+| `js/gfx.js` | Pure graphics quality model: presets, categories, per-preset budgets (`BUDGETS`, `budget`, `particleCap`), hardware level → preset (`LEVELS`, `detectLevel`, `presetForLevel`), `resolve`, `presetTier`, `choosePreset`, `describe` |
 | `js/i18n.js` | Game string tables in nine locales, `t`, live language switching through `sh-language.js` |
 | `js/gfx-i18n.js` | Graphics-section and StarHermit account strings in nine locales, `gfxText`, `accountText` |
 | `js/ui.js` | Screens, HUD, setup/results rendering, help cards, settings binding (including the Graphics section), accessibility mirrors |
@@ -40,7 +40,7 @@ listed once, at the end, under "Design intent not yet implemented".
 | `assets/` | `title-backdrop.webp` (title key art), `throwing-knife.glb` (hero prop model, not yet wired) |
 | `coverart.png`, `icon.png`, `favicon.svg` | Store cover (1200x675), 256 px icon, tab icon |
 | `vendor/addons/` | three.js 0.160.1 `examples/jsm` files: EffectComposer, RenderPass, ShaderPass, OutputPass, GTAOPass, UnrealBloomPass, SMAAPass, FXAA and their shaders, RoomEnvironment |
-| `tests/rules.test.mjs`, `tests/gfx.test.mjs`, `tests/e2e.mjs`, `tests/shot-late-tier.mjs` | 19 rules tests, 10 graphics-model tests, 15-step browser playthrough, a screenshot helper |
+| `tests/rules.test.mjs`, `tests/gfx.test.mjs`, `tests/e2e.mjs`, `tests/shot-late-tier.mjs` | 19 rules tests, 11 graphics-model tests, 15-step browser playthrough, a screenshot helper |
 | `starhermit.txt`, `package.json`, `LICENSE.md`, `knownissues.md` | Platform manifest, scripts, PolyForm Noncommercial 1.0.0, review log |
 | `data/` | Runtime leaderboard store written by `server.js` (`scores.json`); git-ignored, never served |
 
@@ -278,17 +278,16 @@ flickering accent point light. Optional effects: key-light shadows (blades, rim,
 wheel face and floor), image-based reflections from a PMREM-filtered `RoomEnvironment` (per-material
 `envMapIntensity`, strongest on steel), GTAO ambient occlusion, bloom limited to highlights (threshold 0.9: sigil halos,
 hot sparks, bright steel), a colour grade after tone mapping (gentle S-curve, +8 % saturation, warm highlights / cool
-shadows, vignette), FXAA/SMAA/MSAA anti-aliasing, particles (burst pool of 80 or 260 plus 70 slow additive embers
-drifting behind the wheel plane at High) and surface detail (Detailed: 1024 px wood with the grain as a bump map, worn
+shadows, vignette), FXAA/SMAA/MSAA anti-aliasing, particles (burst pool of 80 or 260 × the budget's multiplier plus the budget's slow additive embers
+drifting behind the wheel plane at High) and surface detail (Detailed: the budget's wood texture with the grain as a bump map, worn
 stage-board floor, an overhead spot that pools light on the wheel, brass post bands and seeded crates; Plain: flat floor,
-512 px wood). The Settings panel's **Graphics** section (`#gfx-section`) offers Quality (`#set-quality`: Auto (detected:
-<tier>), chosen from the WebGL unmasked renderer string where software renderers get Low, discrete GPUs and Apple M get
-High and the rest Balanced, capped at Balanced on touch devices; Low; Balanced; High; Ultra), Render scale
+at most 512 px wood). The Settings panel's **Graphics** section (`#gfx-section`) offers Quality (`#set-quality`: Auto (detected:
+<tier>), chosen from the StarHermit hardware level below; Low; Balanced; High; Ultra), Render scale
 (`#gfx-render-scale`, 50-200 %), one select per category (`#gfx-shadows`, `#gfx-ao`, `#gfx-bloom`, `#gfx-grade`,
 `#gfx-antialias`, `#gfx-reflections`, `#gfx-particles`, `#gfx-detail`; default "From preset (<tier>)"), Adaptive resolution
 (`#gfx-adaptive`, on by default: over ~90-frame windows the scale steps down 0.1 to a 0.6 floor when frames average over
 26 ms and back up 0.05 when under 14 ms) and Show frame rate (`#gfx-show-fps`, a corner `fps · ratio` readout), plus a
-summary line "GPU · cost · W×H px". Pixel ratio = min(devicePixelRatio, preset cap 1/1.5/2/2) × preset scale (1.25 at
+summary line "GPU · Level N · cost · W×H px" (localized). Pixel ratio = min(devicePixelRatio, preset cap 1/1.5/2/2) × preset scale (1.25 at
 Ultra) × render scale × adaptive scale. Low renders directly with canvas MSAA and no post chain, like the old low tier;
 other presets run EffectComposer (RenderPass → GTAO → UnrealBloom → OutputPass → grade → SMAA/FXAA, HalfFloat target
 with 4× MSAA for MSAA). Choosing a preset clears overrides; every change applies immediately (shadow maps, environment,
@@ -296,6 +295,33 @@ material recompiles, post rebuild, scenery rebuild for detail) and is saved in `
 the preset, `graphics` holds overrides, scale and toggles; a legacy `medium` reads as Balanced). If the post chain
 fails the game renders without it and the section shows a note. The canvas and body carry `data-gfx-preset`. The
 section's strings come from `js/gfx-i18n.js` in the nine target locales and follow the game language (section 10).
+
+**Hardware level and Auto.** `gpu-level.js` (shared StarHermit detector, `window.StarHermitGpu`, loaded before the game
+modules) rates the GPU 0–20 (0 = Galaxy S20 / Intel UHD or weaker, 20 = RTX 5090; laptop parts two levels lower; phones,
+tablets and ≤ 4 GB machines capped at 9; software renderers 0). Auto picks **Low 0, Balanced 4, High 10, Ultra 17**;
+adaptive resolution still steps down when frames are slow. On phones and tablets the shared frame-rate option paces Auto
+at half the display refresh rate and starts with 16 simultaneous sounds.
+
+**Per-preset budgets** (`BUDGETS` in `js/gfx.js`; each tuned to hold 60 FPS on the weakest GPU Auto gives it — Low:
+level 0, Balanced: level 4 Iris Xe, High: level 10 GTX 1070, Ultra: level 17 RTX 4080):
+
+| Preset | Materials | Blades | Wheel segments (face / edge, rim ×1.25) | Wheel-face texture (detail on) | Particle pool × | Embers (Particles high) | Bloom resolution |
+|---|---|---|---|---|---|---|---|
+| Low | Lambert wood, Phong steel | one merged vertex-coloured mesh | 48 | 512 px | 0.6 | 0 | ½ |
+| Balanced | Standard (no clearcoat) | one merged mesh | 64 | 512 px | 1 | 40 | ½ |
+| High | clearcoat Physical face, rim, hub, blades | blade, handle, guard, pommel as 4 lit parts | 96 | 1024 px | 1 | 70 | ¾ |
+| Ultra | as High | 4 parts | 128 | 2048 px | 1.5 | 140 | full |
+
+The particle pool and embers scale within the preset by the hardware level (`StarHermitGpu.scaleBudget`, ≤ 2×; fewer
+below the floor). Meshes and textures are generated procedurally; a preset change that alters the budget rebuilds the
+stage and re-places the embedded blades from the rules state, so gameplay is identical on every preset.
+
+**60 FPS benchmark** (`node tools/gfx-bench.mjs blade-orbit [--mobile --presets low,balanced]`, dev-only, real GPUs;
+hook `tests/gfx-bench.mjs` picks the preset in Settings → Graphics, starts Practice — Easy and keeps throwing with the
+Throw button at the hinted moment). Measured 2026-10-17 with the revised gate (an empty full-window canvas is measured before each preset and subtracted percentile for percentile; typical p50 ≤ 12 ms and slow p90 ≤ 14 ms at the preset's floor level, CPU p90 ≤ 6 ms):
+
+- Desktop 1920×1080: PASS low (GPU p50 8.74 / p90 11.18 ms, empty canvas 3.21 / 10.40, on level 2 → at level 0: typical 8.36, slow 1.17; CPU p90 1.50 ms); PASS balanced (typical 9.61, slow 6.79 at level 4; CPU 2.90 ms); PASS high (typical 5.47, slow 5.00 at level 10; CPU 3.90 ms); PASS ultra (typical 3.57, slow 3.93 at level 17; CPU 3.50 ms).
+- Mobile 390×844 @3×: PASS low (typical 11.49, slow 1.57 at level 0; CPU 1.80 ms); PASS balanced (typical 5.16, slow 4.06 at level 4; CPU 3.00 ms).
 
 **Visual assets the design calls for**: store cover (`coverart.png`), title backdrop (`assets/title-backdrop.webp`), a
 hero throwing-knife model (`assets/throwing-knife.glb`), icon and favicon. See section 15.
@@ -413,7 +439,7 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=scor
 
 ## 14. Testing and acceptance criteria
 
-`npm test` also runs `tests/gfx.test.mjs` and `tests/platform.test.mjs` (StarHermit adapter in a sandbox with a stubbed `fetch`: no requests standalone; token read and fragment stripped; nickname; settings patch of changed keys; cloud-save round trip through `game:<slug>`; control overrides; leaderboard read; sign-out on refused renewal; account strings in all nine locales; a save conflict reloads the cloud copy, lifts the block and merges keeping the better values; every game string, tier, tutorial and challenge name exists in all nine locales with matching placeholders). The e2e adds a signed-in Language step: the StarHermit preferred language fr-CA resolves Automatic to Français (Canada), choosing Italiano while a practice round is paused re-renders Settings, pause screen, HUD and rail without changing the round state and saves `ui.language`, and Report a problem posts to `/reports`. `tests/rules.test.mjs` (19 tests): legal actions; deterministic rotation; every rejection reason; scoring
+`npm test` also runs `tests/gfx.test.mjs` (hardware level → preset: SwiftShader / `Radeon Graphics` / UHD → Low, Iris Xe → Balanced, RTX 3070 → High, RTX 4080 / 5090 → Ultra, phones and tablets Balanced at most; the per-preset budget table; resolve, overrides and strings) and `tests/platform.test.mjs` (StarHermit adapter in a sandbox with a stubbed `fetch`: no requests standalone; token read and fragment stripped; nickname; settings patch of changed keys; cloud-save round trip through `game:<slug>`; control overrides; leaderboard read; sign-out on refused renewal; account strings in all nine locales; a save conflict reloads the cloud copy, lifts the block and merges keeping the better values; every game string, tier, tutorial and challenge name exists in all nine locales with matching placeholders). The e2e adds a signed-in Language step: the StarHermit preferred language fr-CA resolves Automatic to Français (Canada), choosing Italiano while a practice round is paused re-renders Settings, pause screen, HUD and rail without changing the round state and saves `ui.language`, and Report a problem posts to `/reports`. `tests/rules.test.mjs` (19 tests): legal actions; deterministic rotation; every rejection reason; scoring
 components; the three loss reasons; serialization round-trip and version guard; replay determinism across all shipped
 stages; tamper detection; all content validates (Journey, tutorials, challenges, 14 upcoming dailies); generator
 determinism and difficulty scaling; daily stability per UTC day; practice validity; malformed-command fuzz; bot

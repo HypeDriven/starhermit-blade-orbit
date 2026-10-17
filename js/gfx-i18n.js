@@ -13,7 +13,7 @@ const en = {
   off: 'Off', on: 'On', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', plain: 'Plain', detailed: 'Detailed',
   adaptive: 'Adaptive resolution', showFps: 'Show frame rate',
   postFailed: 'Post-processing is unavailable on this device; effects are rendered without it.',
-  unknownGpu: 'unknown GPU',
+  unknownGpu: 'unknown GPU', level: 'Level {level}',
   words: { noShadows: 'no shadows', shadows: 'shadows', ao: 'ambient occlusion', aoHigh: 'full ambient occlusion', bloom: 'bloom', reflections: 'reflections', noAA: 'no anti-aliasing' },
 };
 
@@ -26,7 +26,7 @@ const es = {
   off: 'No', on: 'Sí', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', plain: 'Simple', detailed: 'Detallado',
   adaptive: 'Resolución adaptativa', showFps: 'Mostrar fotogramas por segundo',
   postFailed: 'El posprocesado no está disponible en este dispositivo; los efectos se dibujan sin él.',
-  unknownGpu: 'GPU desconocida',
+  unknownGpu: 'GPU desconocida', level: 'Nivel {level}',
   words: { noShadows: 'sin sombras', shadows: 'sombras', ao: 'oclusión ambiental', aoHigh: 'oclusión ambiental completa', bloom: 'resplandor', reflections: 'reflejos', noAA: 'sin antialiasing' },
 };
 
@@ -39,7 +39,7 @@ const fr = {
   off: 'Désactivé', on: 'Activé', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', plain: 'Simple', detailed: 'Détaillé',
   adaptive: 'Résolution adaptative', showFps: 'Afficher les images par seconde',
   postFailed: 'Le post-traitement est indisponible sur cet appareil ; le rendu se fait sans lui.',
-  unknownGpu: 'GPU inconnu',
+  unknownGpu: 'GPU inconnu', level: 'Niveau {level}',
   words: { noShadows: 'sans ombres', shadows: 'ombres', ao: 'occlusion ambiante', aoHigh: 'occlusion ambiante complète', bloom: 'halo', reflections: 'reflets', noAA: 'sans anticrénelage' },
 };
 
@@ -57,7 +57,7 @@ export const GFX_STRINGS = {
     off: 'Aus', on: 'An', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', plain: 'Einfach', detailed: 'Detailliert',
     adaptive: 'Adaptive Auflösung', showFps: 'Bildrate anzeigen',
     postFailed: 'Nachbearbeitung ist auf diesem Gerät nicht verfügbar; es wird ohne sie gerendert.',
-    unknownGpu: 'unbekannte GPU',
+    unknownGpu: 'unbekannte GPU', level: 'Stufe {level}',
     words: { noShadows: 'keine Schatten', shadows: 'Schatten', ao: 'Umgebungsverdeckung', aoHigh: 'volle Umgebungsverdeckung', bloom: 'Leuchteffekt', reflections: 'Spiegelungen', noAA: 'keine Kantenglättung' },
   },
   'fr-FR': fr,
@@ -71,7 +71,7 @@ export const GFX_STRINGS = {
     off: 'Desligado', on: 'Ligado', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', plain: 'Simples', detailed: 'Detalhado',
     adaptive: 'Resolução adaptativa', showFps: 'Mostrar taxa de quadros',
     postFailed: 'O pós-processamento não está disponível neste dispositivo; a renderização é feita sem ele.',
-    unknownGpu: 'GPU desconhecida',
+    unknownGpu: 'GPU desconhecida', level: 'Nível {level}',
     words: { noShadows: 'sem sombras', shadows: 'sombras', ao: 'oclusão de ambiente', aoHigh: 'oclusão de ambiente completa', bloom: 'brilho', reflections: 'reflexos', noAA: 'sem antisserrilhamento' },
   },
   'it-IT': {
@@ -83,7 +83,7 @@ export const GFX_STRINGS = {
     off: 'No', on: 'Sì', fxaa: 'FXAA', smaa: 'SMAA', msaa: 'MSAA', plain: 'Semplice', detailed: 'Dettagliato',
     adaptive: 'Risoluzione adattiva', showFps: 'Mostra frequenza fotogrammi',
     postFailed: 'La post-elaborazione non è disponibile su questo dispositivo; il rendering avviene senza.',
-    unknownGpu: 'GPU sconosciuta',
+    unknownGpu: 'GPU sconosciuta', level: 'Livello {level}',
     words: { noShadows: 'nessuna ombra', shadows: 'ombre', ao: 'occlusione ambientale', aoHigh: 'occlusione ambientale completa', bloom: 'bagliore', reflections: 'riflessi', noAA: 'nessun antialiasing' },
   },
 };

@@ -192,7 +192,7 @@ class UI {
     $('gfx-render-scale-value').textContent = `${pct}%`;
     $('gfx-adaptive').checked = g.adaptive !== false;
     $('gfx-show-fps').checked = !!g.show_fps;
-    $('gfx-summary').textContent = info ? `${info.gpu || t('unknownGpu')} · ${info.summary}` : '';
+    $('gfx-summary').textContent = info ? `${info.gpu || t('unknownGpu')} · ${t('level').replace('{level}', info.level ?? 0)} · ${info.summary}` : '';
     $('gfx-post-note').hidden = !info?.postFailed;
     $('gfx-post-note').textContent = t('postFailed');
     document.body.dataset.gfxPreset = info?.resolved?.preset || active;
