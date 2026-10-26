@@ -1,0 +1,176 @@
+/* Blade Orbit — the browser client's style sheet (css/main.css), kept for the
+ * engine port and rewritten class-based for `starhermit css` (`npm run css`
+ * converts it into assets/ui-style.json, which native/style.ts registers):
+ * ids, element selectors (h2, h3, p, dt, dd, td, kbd, legend) and compound
+ * classes (.card h3, .results-headline.won, .journey-cell.locked) became
+ * classes of their own; the media queries, safe-area insets, the ui-scale
+ * zoom, the body attributes (palette, high contrast, reduced motion,
+ * left-handed), the graphics panel, the fps meter and the screens' backdrop
+ * blur are gone: the runtime gives interface size, text size, high contrast,
+ * reduced motion and graphics, native/style.ts swaps the palette tokens, and
+ * native/screens.ts picks the layouts (rails, the short-landscape column) by
+ * window size. color-mix() is spelled out as rgba. */
+* { box-sizing: border-box; }
+:root {
+  --bg: #140b07;
+  --panel: #221409;
+  --panel-2: #2e1c0e;
+  --ink: #f4e8d8;
+  --ink-dim: #c9b49a;
+  --accent: #ff8c3a;
+  --accent-2: #ffc46a;
+  --good: #51c98a;
+  --bad: #ff5151;
+  --focus: #6ab8ff;
+  --hover: #3d2812;
+  --on-accent: #1a0d05;
+  --radius: 12px;
+  font-size: 16px;
+}
+
+/* ---------- top bar ---------- */
+.topbar { background: var(--panel); border-bottom: 1px solid rgba(0, 0, 0, 0.4); border-radius: 0; padding: 0.5rem 1rem; min-height: 48px; }
+.game-title { font-size: 1.15rem; font-weight: 700; letter-spacing: 0.06em; color: var(--accent-2); }
+.server-clock { color: var(--ink-dim); font-size: 0.85rem; }
+.profile-chip { color: var(--ink-dim); font-size: 0.9rem; }
+
+/* ---------- rails ---------- */
+.rail { background: var(--panel); border-radius: 0; padding: 1rem; }
+.rail-heading { font-size: 0.8rem; letter-spacing: 0.12em; color: var(--ink-dim); }
+.rail-objective { font-weight: 600; color: var(--ink); }
+.rail-dim { color: var(--ink-dim); font-size: 0.92rem; }
+
+/* ---------- HUD ---------- */
+.hud-top { background: rgba(34, 20, 9, 0.82); border-radius: var(--radius); padding: 0.4rem 0.8rem; }
+.hud-label { font-size: 0.68rem; letter-spacing: 0.1em; color: var(--ink-dim); }
+.hud-value { font-weight: 700; color: var(--ink); }
+.hud-score { font-weight: 700; color: var(--accent-2); }
+
+.btn {
+  min-height: 44px; min-width: 44px;
+  padding: 0.55rem 1.1rem;
+  border: 1px solid rgba(0, 0, 0, 0.53);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: var(--ink);
+  text-align: center;
+  transition: background 0.15s ease;
+}
+.btn:hover { background: var(--hover); }
+.btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.btn:disabled { opacity: 0.45; }
+.btn-primary { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+.btn-primary:hover { background: var(--accent-2); }
+.btn-danger { border-color: var(--bad); color: var(--bad); }
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.08); }
+.btn-big { font-size: 1.25rem; padding: 0.8rem 2rem; }
+.btn-small { min-height: 40px; padding: 0.35rem 0.8rem; font-size: 0.9rem; }
+.btn-throw {
+  font-size: 1.35rem; font-weight: 800;
+  padding: 0.9rem 2.6rem;
+  background: var(--accent); color: var(--on-accent);
+  border-radius: 999px;
+  box-shadow: 0 4px 18px rgba(255, 140, 58, 0.27);
+}
+.btn-throw:hover { background: var(--accent-2); }
+.btn-throw-compact { font-size: 1.1rem; padding: 0.7rem 1.4rem; }
+
+.hint-line { color: var(--accent-2); font-weight: 600; text-shadow: 0 1px 3px #000; }
+.countdown { font-size: 9rem; font-weight: 900; color: var(--accent-2); text-shadow: 0 4px 30px #000; }
+.countdown-compact { font-size: 5rem; }
+.tutorial-banner {
+  background: rgba(34, 20, 9, 0.92);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.7rem 1.1rem;
+  color: var(--ink);
+}
+.tutorial-banner-compact { padding: 0.5rem 0.7rem; font-size: 0.9rem; }
+.captions { background: rgba(0, 0, 0, 0.78); color: #ffffff; padding: 0.25rem 0.8rem; border-radius: 6px; font-size: 0.9rem; }
+
+/* ---------- screens ---------- */
+.screen { background: rgba(16, 10, 6, 0.8); }
+.panel {
+  background: var(--panel);
+  border: 1px solid rgba(0, 0, 0, 0.53);
+  border-radius: var(--radius);
+  padding: 1.4rem 1.6rem;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.67);
+}
+.panel-compact { padding: 1.1rem; }
+.panel-h2 { font-size: 1.5rem; font-weight: 700; color: var(--accent-2); }
+.panel-h3 { font-size: 1.17rem; font-weight: 700; color: var(--ink); }
+.panel-sub { color: var(--ink-dim); }
+.title-big { font-size: 3.4rem; font-weight: 700; letter-spacing: 0.1em; color: var(--accent-2); }
+.title-big-compact { font-size: 2.2rem; }
+.tagline { color: var(--ink-dim); }
+.title-progress { color: var(--ink-dim); font-size: 0.9rem; }
+
+/* cards (modes, help) */
+.card {
+  background: var(--panel-2);
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius);
+  padding: 1rem;
+  text-align: left;
+  color: var(--ink);
+  min-height: 44px;
+}
+.card:hover { border-color: var(--accent); }
+.card:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.card-h3 { font-size: 1.05rem; font-weight: 700; color: var(--accent-2); }
+.card-p { color: var(--ink-dim); font-size: 0.9rem; }
+.card-meta { font-size: 0.8rem; color: var(--ink-dim); letter-spacing: 0.08em; }
+
+/* journey grid */
+.journey-cell {
+  border-radius: 10px;
+  background: var(--panel-2); border: 1px solid rgba(0, 0, 0, 0.4);
+  color: var(--ink); font-weight: 700; min-height: 44px; padding: 0.2rem; text-align: center;
+}
+.journey-cell:hover { border-color: var(--accent-2); }
+.journey-cell:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.journey-cell:disabled { opacity: 0.35; }
+.journey-mastery { border-color: var(--accent); }
+.stars { color: var(--accent-2); font-size: 0.75rem; }
+
+/* setup */
+.setup-dt { color: var(--ink-dim); }
+.setup-dd { font-weight: 600; color: var(--ink); }
+.flag-ranked { padding: 0.1rem 0.6rem; border-radius: 999px; font-size: 0.8rem; background: var(--accent); color: var(--on-accent); }
+.flag-casual { padding: 0.1rem 0.6rem; border-radius: 999px; font-size: 0.8rem; background: var(--panel-2); color: var(--ink-dim); border: 1px solid rgba(0, 0, 0, 0.4); }
+
+/* results */
+.results-won { font-size: 1.5rem; font-weight: 800; color: var(--good); }
+.results-lost { font-size: 1.5rem; font-weight: 800; color: var(--bad); }
+.score-row { padding: 0.35rem 0.2rem; border-bottom: 1px solid rgba(0, 0, 0, 0.27); }
+.score-total { padding: 0.35rem 0.2rem; }
+.cell { color: var(--ink); }
+.cell-num { font-weight: 700; color: var(--ink); }
+.cell-total { font-size: 1.15rem; color: var(--accent-2); font-weight: 400; }
+.cell-total-num { font-size: 1.15rem; color: var(--accent-2); font-weight: 700; }
+.results-dim { color: var(--ink-dim); font-size: 0.92rem; }
+.achievement-chip {
+  background: var(--panel-2); border: 1px solid var(--accent);
+  border-radius: 999px; padding: 0.2rem 0.8rem; font-size: 0.85rem; color: var(--ink);
+}
+.mine { color: var(--accent-2); font-weight: 700; }
+
+/* settings */
+.fieldset { border: 1px solid rgba(0, 0, 0, 0.4); border-radius: var(--radius); padding: 0.8rem 1rem; }
+.legend { color: var(--accent-2); }
+.fine-print { color: var(--ink-dim); font-size: 0.8rem; }
+
+/* help */
+.controls-row { padding: 0.2rem 0; }
+.kbd {
+  background: var(--panel-2); border: 1px solid rgba(0, 0, 0, 0.53); border-bottom-width: 3px;
+  border-radius: 6px; padding: 0.1rem 0.5rem; color: var(--ink);
+}
+
+/* StarHermit account toast */
+.toast {
+  padding: 10px 16px; background: var(--panel); color: var(--ink);
+  border: 1px solid var(--accent); border-radius: 8px; font-size: 0.95rem; text-align: center;
+}

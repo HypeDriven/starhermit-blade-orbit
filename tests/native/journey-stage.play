@@ -1,0 +1,44 @@
+# Journey: stage 1 (First Throws 1, five blades on a clean wheel) from the
+# journey grid, cleared with five throws at the widest gaps
+# (`node tools/plan.mjs journey-1`) for three stars, then Next stage opens
+# stage 2's briefing and Escape goes back to the title, where the grid shows
+# stage 2 unlocked.
+until 300 Play
+frames 5
+click Journey
+until 60 Five tiers of eight stages. Every eighth is a mastery trial.
+frames 5
+save journey
+click 1
+until 60 Begin
+expect First Throws 1
+frames 5
+click Begin
+# journey-1: won (goal-complete), score 1250
+frames 169
+key Space 2
+frames 491
+key Space 2
+frames 737
+key Space 2
+frames 491
+key Space 2
+frames 614
+key Space 2
+until 200 Wheel Cleared!
+expect 1250
+expect New personal best for this stage!
+frames 5
+click Next stage
+until 60 First Throws 2
+frames 5
+save next-setup
+key Escape 2
+until 60 Play
+frames 5
+click Journey
+until 60 Five tiers of eight stages. Every eighth is a mastery trial.
+frames 5
+save journey-after
+click 2
+until 60 First Throws 2

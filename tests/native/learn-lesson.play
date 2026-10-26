@@ -1,0 +1,34 @@
+# Learn: lesson 1 (The Throw) from the title's Learn to Play — the briefing,
+# the countdown, two throws on the Space key at the widest gaps
+# (`node tools/plan.mjs tut-throw`: the round clock is the runtime's fixed
+# steps, one tick a frame here, so the planned score is the score), the
+# results with their breakdown and achievements, then Menu and the lesson
+# list showing the lesson completed.
+until 300 Play
+frames 300
+save title
+click Learn to Play
+until 60 Lesson 1 — The Throw
+frames 5
+save lessons
+click Lesson 1 — The Throw
+until 60 Begin
+frames 5
+save setup
+click Begin
+# tut-throw: won (goal-complete), score 984
+frames 169
+key Space 2
+frames 522
+key Space 2
+until 200 Wheel Cleared!
+expect Total
+expect 984
+expect First Blood of Oak
+frames 30
+save results
+click Menu
+until 60 Play
+frames 5
+click Learn to Play
+until 60 COMPLETED

@@ -1,11 +1,16 @@
 {
   "name": "blade-orbit",
   "version": "1.0.0",
-  "description": "Blade Orbit — timing target game. Throw blades into a rotating target without striking steel or warded sigils.",
+  "description": "Blade Orbit — timing target game. Throw blades into a rotating target without striking steel or warded sigils, on the StarHermit engine.",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/rules.test.mjs tests/gfx.test.mjs tests/platform.test.mjs",
-    "test:e2e": "node tests/e2e.mjs",
+    "test": "npm run test:unit && npm run test:native",
+    "test:unit": "node --test tests/rules.test.mjs tests/i18n.test.mjs tests/migrate.test.mjs",
+    "test:native": "node tests/native.mjs",
+    "test:browser": "node tools/browser-play.mjs .",
+    "package": "node tools/package-web.mjs",
+    "css": "node tools/css.mjs",
+    "plan": "node tools/plan.mjs",
     "serve": "node server.js"
   },
   "license": "UNLICENSED",

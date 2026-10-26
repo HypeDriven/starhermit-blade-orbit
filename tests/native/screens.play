@@ -1,0 +1,39 @@
+# The title's Help (the cards and the controls list with the bound keys),
+# Settings (a game setting toggled, the inline reset confirmation, Cancel),
+# the guest's Leaderboards note, and the daily briefing (ranked).
+until 300 Play
+frames 5
+click Help
+until 60 Controls
+expect SPACE / ENTER / NUM ENTER / tap
+frames 5
+save help
+key Escape 2
+until 60 Play
+frames 5
+click Settings
+until 60 Captions / text cues
+frames 5
+click Timing assist reticle
+frames 5
+save settings
+click Reset all progress
+until 30 Erase everything
+frames 5
+save confirm
+click Cancel
+until 30 Reset all progress
+key Escape 2
+until 60 Play
+frames 5
+click Leaderboards
+until 60 Sign in with StarHermit to see the leaderboards.
+frames 5
+save leaderboard
+key Escape 2
+until 60 Play
+frames 5
+click Daily Challenge
+until 60 Ranked (daily board)
+frames 5
+save daily

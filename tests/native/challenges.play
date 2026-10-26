@@ -1,0 +1,39 @@
+# Challenges: Flawless Edge (no misses allowed) ends on the first throw,
+# struck into a blade (`node tools/plan.mjs challenge-flawless-edge --miss 1`),
+# then Ember Sprint's 60-second limit runs out with no throw: Time Expired.
+until 300 Play
+frames 5
+click Play
+until 60 Choose a mode
+frames 5
+click Challenges
+until 60 Flawless Edge
+frames 5
+click Flawless Edge
+until 60 Begin
+frames 5
+click Begin
+frames 341
+key Space 2
+until 200 Out of Misses
+expect Retry
+frames 5
+save flawless
+key Escape 2
+until 60 Play
+frames 5
+click Play
+until 60 Choose a mode
+frames 5
+click Challenges
+until 60 Ember Sprint
+frames 5
+click Ember Sprint
+until 60 Begin
+expect 60s limit
+frames 5
+click Begin
+frames 300
+expect TIME
+save sprint
+until 3700 Time Expired

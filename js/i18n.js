@@ -1,12 +1,13 @@
 /**
- * Blade Orbit — localization. Every player-facing string except the Graphics
- * section and StarHermit account lines (js/gfx-i18n.js, same locale) lives here
- * in nine locales: en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT.
- * The locale comes from sh-language.js (Settings → Language: explicit choice →
- * StarHermit preferred language → navigator.languages → en-US); `?lang=` forces
- * one for the page load (QA links) and hides the selector. A change re-applies
- * [data-i18n] markup and notifies listeners so screens, HUD and rails re-render.
+ * Blade Orbit — localization. Every player-facing string lives here in nine
+ * locales: en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR, it-IT,
+ * with the StarHermit account lines (js/account-strings.js) folded in as
+ * acct.<key>. The engine client picks the locale from the runtime's interface
+ * language (native/i18n.ts → setLocale); listeners hear the change so the
+ * screens re-render in place.
  */
+
+import { ACCOUNT_STRINGS } from './account-strings.js';
 
 const EN = {
   // static markup
@@ -573,27 +574,77 @@ const IT = {
   'ach.mastery_tier5': 'Grande maestria', 'ach.journey_done': 'Conquistatore della ruota', 'ach.throws_1000': 'Mille lanci', 'ach.flawless_win': 'Intatto'
 };
 
+// Strings of the engine client (the runtime's Options button, the inline
+// reset confirmation, the guest's leaderboard note, the gamepad line with the
+// bound buttons, the data note now that progress syncs with the account).
+const CLIENT = {
+  'en-US': {
+    'set.options': 'Sound, graphics, language, controls & accessibility…',
+    'set.dataNote': 'Progress syncs with your StarHermit account when you are signed in. Replays stay on this device.',
+    'btn.erase': 'Erase everything', 'btn.cancel': 'Cancel',
+    'lb.signIn': 'Sign in with StarHermit to see the leaderboards.',
+    'ctl.gamepad': 'Gamepad: {throw} throw · {pause} pause · {back} back',
+  },
+  'es-419': {
+    'set.options': 'Sonido, gráficos, idioma, controles y accesibilidad…',
+    'set.dataNote': 'El progreso se sincroniza con tu cuenta de StarHermit cuando inicias sesión. Las repeticiones se quedan en este dispositivo.',
+    'btn.erase': 'Borrar todo', 'btn.cancel': 'Cancelar',
+    'lb.signIn': 'Inicia sesión con StarHermit para ver las clasificaciones.',
+    'ctl.gamepad': 'Mando: {throw} lanzar · {pause} pausa · {back} volver',
+  },
+  'de-DE': {
+    'set.options': 'Ton, Grafik, Sprache, Steuerung und Barrierefreiheit …',
+    'set.dataNote': 'Der Fortschritt wird mit deinem StarHermit-Konto synchronisiert, wenn du angemeldet bist. Replays bleiben auf diesem Gerät.',
+    'btn.erase': 'Alles löschen', 'btn.cancel': 'Abbrechen',
+    'lb.signIn': 'Melde dich bei StarHermit an, um die Bestenlisten zu sehen.',
+    'ctl.gamepad': 'Gamepad: {throw} werfen · {pause} Pause · {back} zurück',
+  },
+  'fr-FR': {
+    'set.options': 'Son, graphismes, langue, commandes et accessibilité…',
+    'set.dataNote': 'La progression se synchronise avec votre compte StarHermit lorsque vous êtes connecté. Les replays restent sur cet appareil.',
+    'btn.erase': 'Tout effacer', 'btn.cancel': 'Annuler',
+    'lb.signIn': 'Connectez-vous avec StarHermit pour voir les classements.',
+    'ctl.gamepad': 'Manette : {throw} lancer · {pause} pause · {back} retour',
+  },
+  'pt-BR': {
+    'set.options': 'Som, gráficos, idioma, controles e acessibilidade…',
+    'set.dataNote': 'O progresso é sincronizado com sua conta StarHermit quando você está conectado. Os replays ficam neste dispositivo.',
+    'btn.erase': 'Apagar tudo', 'btn.cancel': 'Cancelar',
+    'lb.signIn': 'Entre com a StarHermit para ver os rankings.',
+    'ctl.gamepad': 'Controle: {throw} arremessar · {pause} pausar · {back} voltar',
+  },
+  'it-IT': {
+    'set.options': 'Audio, grafica, lingua, comandi e accessibilità…',
+    'set.dataNote': 'I progressi si sincronizzano con il tuo account StarHermit quando hai effettuato l’accesso. I replay restano su questo dispositivo.',
+    'btn.erase': 'Cancella tutto', 'btn.cancel': 'Annulla',
+    'lb.signIn': 'Accedi con StarHermit per vedere le classifiche.',
+    'ctl.gamepad': 'Controller: {throw} lancia · {pause} pausa · {back} indietro',
+  },
+};
+const acct = (loc) => Object.fromEntries(Object.entries(ACCOUNT_STRINGS[loc] || ACCOUNT_STRINGS['en-US']).map(([k, v]) => ['acct.' + k, v]));
+const full = (loc, base, client) => ({ ...base, ...CLIENT[client], ...acct(loc) });
+
 export const STRINGS = {
-  'en-US': EN,
-  'en-GB': { ...EN, ...EN_GB },
-  'es-419': ES,
-  'es-ES': { ...ES, ...ES_ES },
-  'de-DE': DE,
-  'fr-FR': FR,
-  'fr-CA': { ...FR, ...FR_CA },
-  'pt-BR': PT,
-  'it-IT': IT,
+  'en-US': full('en-US', EN, 'en-US'),
+  'en-GB': full('en-GB', { ...EN, ...EN_GB }, 'en-US'),
+  'es-419': full('es-419', ES, 'es-419'),
+  'es-ES': full('es-ES', { ...ES, ...ES_ES }, 'es-419'),
+  'de-DE': full('de-DE', DE, 'de-DE'),
+  'fr-FR': full('fr-FR', FR, 'fr-FR'),
+  'fr-CA': full('fr-CA', { ...FR, ...FR_CA }, 'fr-FR'),
+  'pt-BR': full('pt-BR', PT, 'pt-BR'),
+  'it-IT': full('it-IT', IT, 'it-IT'),
 };
 export const LOCALES = Object.keys(STRINGS);
 
 let lang = 'en-US';
-let dict = EN;
+let dict = STRINGS[lang];
 const listeners = [];
 
 /** Translate `key`, filling {placeholders}; en-US, then `fallback`, then the key. */
 export function t(key, vars, fallback) {
   let s = dict[key];
-  if (s == null) s = EN[key];
+  if (s == null) s = STRINGS['en-US'][key];
   if (s == null) s = fallback != null ? fallback : key;
   if (vars) s = String(s).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m));
   return s;
@@ -601,29 +652,11 @@ export function t(key, vars, fallback) {
 export function getLang() { return lang; }
 export function onLanguage(fn) { listeners.push(fn); }
 
-/** Re-apply data-i18n / data-i18n-aria / data-i18n-title under `root`. */
-export function applyDom(root = typeof document !== 'undefined' ? document : null) {
-  if (!root) return;
-  for (const n of root.querySelectorAll('[data-i18n]')) n.textContent = t(n.dataset.i18n);
-  for (const n of root.querySelectorAll('[data-i18n-aria]')) n.setAttribute('aria-label', t(n.dataset.i18nAria));
-  for (const n of root.querySelectorAll('[data-i18n-title]')) n.setAttribute('title', t(n.dataset.i18nTitle));
-  if (root === document) document.documentElement.lang = lang;
-}
-
-function setLocale(next) {
-  lang = STRINGS[next] ? next : 'en-US';
+/** Switch to a shipped locale (unknown → en-US) and tell the listeners. */
+export function setLocale(next) {
+  const want = STRINGS[next] ? next : 'en-US';
+  if (want === lang) return;
+  lang = want;
   dict = STRINGS[lang];
-  if (typeof document === 'undefined') return;
-  applyDom(document);
   for (const fn of listeners.slice()) { try { fn(lang); } catch (e) { console.error(e); } }
 }
-
-let forced = null;
-try { forced = new URLSearchParams(location.search).get('lang'); } catch { /* no URL */ }
-const SL = typeof window !== 'undefined' ? window.StarHermitLanguage : null;
-const forcedLocale = forced && SL ? SL.match(forced, LOCALES) : null;
-export const language = SL ? SL.create({
-  game: 'blade-orbit', supported: LOCALES, panel: !forcedLocale,
-  apply: (locale) => setLocale(forcedLocale || locale),
-}) : null;
-if (!language && typeof document !== 'undefined') setLocale('en-US');
