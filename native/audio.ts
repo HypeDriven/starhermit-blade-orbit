@@ -14,7 +14,7 @@
 // while a sample loaded, and its synth ambience bed, are not ported: the
 // engine's browser runtime drops clip loads and plays while a synthesis graph
 // changes (the arrow-exodus port's finding). Clips load once the mixer runs
-// (natively at once, in a browser after the first press).
+// (natively at once, in a browser after the first press), one at a time.
 import { context, createClip, loadClip, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
 import { makeRng } from "../js/rules.js";
 
@@ -30,11 +30,19 @@ const AMBIENCE: Record<string, string> = { hearth: "ambience-hearth", wind: "amb
 const CAPTIONED = new Set(["throw", "embed", "miss-blade", "miss-marker", "win", "lose", "tick", "go", "achievement", "combo"]);
 
 const clips = new Map<string, AudioClip>();
+/** Clips still to load, one at a time (a burst of loads and clip creations
+ * made the web runtime's audio port time out on a loaded machine). */
+const queue: string[] = [];
+let loading = false;
 let onCaption: ((type: string, detail: { combo?: number }) => void) | null = null;
 let wantClips = false;
 
-function load(name: string): void {
-  loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => console.warn(`sfx ${name}: ${String(e)}`));
+function load(name: string): void { if (!queue.includes(name)) queue.push(name); }
+function pump(): void {
+  if (loading || !queue.length) return;
+  const name = queue.shift()!;
+  loading = true;
+  loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); loading = false; }, (e: unknown) => { console.warn(`sfx ${name}: ${String(e)}`); loading = false; });
 }
 /** Asks for the clips; they load once the mixer runs (see update). */
 export function loadSfx(): void { wantClips = true; }
@@ -53,7 +61,7 @@ export function event(type: string, detail: { combo?: number } = {}): void {
 
 // -- the music stem ---------------------------------------------------------------------
 const SCALE = [220, 262, 294, 330, 392, 440];
-const RATE = 22050;
+const RATE = 11025;
 const notes = new Map<number, AudioClip>();
 /** One stem note: a sine rising to 1 in 8 ms and falling exponentially to 0.0001 by 0.9 s (js/audio.js env()). */
 function noteClip(freq: number): AudioClip {
@@ -71,6 +79,7 @@ const musicRng = makeRng("music:blade-orbit");
 let musicOn = false;
 let intensity = 0;
 let nextNote = 0;
+let nextRender = 0;
 let paused = false;
 
 /** The stem plays under a round; `level` 0–1 (the stage's tier / 6, 0.2 without one). */
@@ -106,9 +115,14 @@ export function update(): void {
     for (const name of new Set([...Object.values(SAMPLES), ...Object.values(AMBIENCE)])) load(name);
     return;
   }
+  pump();
+  if (loading || queue.length) return;
   try {
-    for (const f of SCALE) for (const k of [1, 2]) {
-      if (!notes.has(f * k)) { notes.set(f * k, noteClip(f * k)); return; }
+    // the stem's notes once the samples are in, one every half second
+    if (context.currentTime >= nextRender) {
+      for (const f of SCALE) for (const k of [1, 2]) {
+        if (!notes.has(f * k)) { notes.set(f * k, noteClip(f * k)); nextRender = context.currentTime + 0.5; return; }
+      }
     }
     if (ambienceKind && !ambience) {
       const clip = clips.get(AMBIENCE[ambienceKind] ?? "");

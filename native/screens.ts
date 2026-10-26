@@ -175,10 +175,14 @@ let topH = 56;
 let toastH = 40;
 export function drawScreens(): void {
   const L = layoutNow();
-  if (app.focusNext && app.screen && frame().frame - app.openedFrame >= 2) {
+  // A screen that just opened focuses its first control once its layout has
+  // settled; a tall screen moves into its scroll area a frame later, where a
+  // focus asked for too early does not take: ask again until it does.
+  const age = frame().frame - app.openedFrame;
+  if (app.focusNext && app.screen && age >= 2) {
     const first = firstLabel(app.screen);
-    if (first) ui.setFocus(first);
-    app.focusNext = false;
+    if (first && age < 12 && ui.focused() !== first) ui.setFocus(first);
+    else app.focusNext = false;
   }
   if (app.screen === "title") drawBackdrop();
   const playing = !!session && !app.screen;
