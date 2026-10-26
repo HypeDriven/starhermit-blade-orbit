@@ -13,7 +13,7 @@ click Flawless Edge
 until 60 Begin
 frames 5
 click Begin
-frames 341
+frames 344
 key Space 2
 until 200 Out of Misses
 expect Retry

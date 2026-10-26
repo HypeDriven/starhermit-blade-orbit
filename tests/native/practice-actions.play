@@ -12,7 +12,7 @@ click Lesson 2 — Mind the Steel
 until 60 Begin
 frames 5
 click Begin
-frames 540
+frames 543
 key Space 2
 frames 20
 expect 1 / 3

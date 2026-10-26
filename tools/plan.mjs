@@ -2,7 +2,7 @@
 // the widest gap ahead (the hint system's findBestThrowTick), as waits and
 // Space presses. The round clock is the runtime's fixed steps, one tick a
 // frame in a render check: after the click that starts the round (Begin),
-// the countdown runs 4 × 42 ticks and the wheel's tick 0 comes 164 frames
+// the countdown runs 4 × 42 ticks and the wheel's tick 0 comes 167 frames
 // after the click step (measured: the click's own frames, the round start
 // in the frame's UI pass), and a key press acts at the start of its first
 // frame (at the tick the previous frames reached); each `key Space 2` takes
@@ -20,7 +20,7 @@ const all = [...JOURNEY, ...TUTORIALS, ...CHALLENGES.map((c) => c.build())];
 const content = all.find((c) => c.id === id);
 if (!content) { console.error(`no stage ${id}`); process.exit(1); }
 
-const COUNTDOWN = 4 * 42 - 4;
+const COUNTDOWN = 4 * 42 - 1;
 const LOCK = 9; // the 0.14 s resolve lock (8 steps) and one to spare
 let s = createGame(content);
 const lines = [];

@@ -15,7 +15,7 @@ expect First Throws 1
 frames 5
 click Begin
 # journey-1: won (goal-complete), score 1250
-frames 169
+frames 172
 key Space 2
 frames 491
 key Space 2

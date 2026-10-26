@@ -17,7 +17,7 @@ frames 5
 save setup
 click Begin
 # tut-throw: won (goal-complete), score 984
-frames 169
+frames 172
 key Space 2
 frames 522
 key Space 2
