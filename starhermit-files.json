@@ -6,7 +6,7 @@
     "cover.jpg": {"sha256": "eee63ab13d72a3f71d30f1cb9e5a05420bfe874411ba9953f2d00e076897cbc2", "size": 241718},
     "coverart.png": {"sha256": "5641ff77524497a3d2e00d7f7ffc3dc2cf28c47dad1b9522f0bb6c09ff7a1c46", "size": 301607},
     "icon.png": {"sha256": "33a181f3caea14739db176898005297b5d4da7ba7dcf67b6ab00ddff4d387f77", "size": 13523},
-    "index.html": {"sha256": "49912639411a4ed0ec9d1d4cfc033db5fb29dd1e16ab870cae5ddd7cb8575953", "size": 1758},
+    "index.html": {"sha256": "e1690e63b9edad5008fa8f8ba1132a87ca81694ec8953fe9b2358ef68f7f65b3", "size": 1758},
     "js/account-strings.js": {"sha256": "41f814492e16725e9eac5f5ee7ee00d3853fd2ef3c740b9c365e955e284cd166", "size": 7314},
     "js/content.js": {"sha256": "0d2219cbcaa7ce47689678db12ad55cc9b491a59ac10e272d866172d2e8b6bbd", "size": 15445},
     "js/i18n.js": {"sha256": "27c16fdef488ceb5c3fc7805d0aa2ff33930ed8b349ac0bfe851f62fc3483e4d", "size": 75287},
@@ -43,8 +43,8 @@
     "sfx/ui-hint.opus": {"sha256": "15d227f15e4245b79ef25a614dd41ff471b567b7565f117bdd9484b7e5c237ba", "size": 16349},
     "sfx/ui-pause.opus": {"sha256": "4949ebdfe37738a493028cdb1e11b80ca65e1a999b639e05256b68408ce2b8f4", "size": 11379},
     "sfx/ui-undo.opus": {"sha256": "f5b988c0c79121824e5ce9fe5d8a5d6e255717d0ec0a66b2ee98382a2bc82834", "size": 11420},
-    "spec.md": {"sha256": "edbc3eb97debb602b702dbb1346ed99711e954b22dc7fe8732110befccdf8cef", "size": 40258},
-    "starhermit.txt": {"sha256": "4593c90f571e364d707b6a55d0529ad96421e9a5a7db8b990c3d268e92a4392a", "size": 1385}
+    "spec.md": {"sha256": "99a6e8843da0f300df19e1926b9efa1ccf61fc8a278b0ce2bf490e38d02e21c8", "size": 40258},
+    "starhermit.txt": {"sha256": "1e3be299f9ee0c93f62abe99a2c3148382c7290930fab07c3257c221187dcdcf", "size": 1385}
   },
   "excluded": ["assets/throwing-knife.glb", "data/", "knownissues.md", "node_modules/", "package-lock.json", "package.json", "server.js", "test-results/", "tests/", "tools/", "tsconfig.json"],
   "format": 1
