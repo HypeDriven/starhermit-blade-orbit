@@ -16,25 +16,23 @@
 //   antialias; the grade's GLSL (an S-curve blended 0.22, saturation 1.08,
 //   cool shadows / warm highlights, the vignette) is the built-in
 //   display-space grade with the same curve, tints and vignette.
-// - The wheel face's bumpMap (not available) is a normal map computed from
-//   the carved texture's luminance.
 // - MeshPhongMaterial (Low's steel) is Lambert; the per-particle opacity of
 //   the spark pool (a mesh and material each) is one InstancedMesh whose
 //   particles shrink as they fade.
-// - The key light's fitted orthographic shadow box is the engine's
-//   view-based directional shadow (`shadow.distance`).
 // - The canvas sat between the top bar and the rails; the scene fills the
 //   window here, and the camera's view offset (setViewOffset) puts the
 //   playfield's frustum where the canvas was. The camera fit measured the
 //   DOM's HUD bands; screens.ts passes the playfield and the bands it lays
 //   out (setPlayfield), and fitFraming is otherwise unchanged.
-// - Light intensities are three.js r160's divided by π (the engine's
-//   convention). The canvas textures are CanvasTextures of starhermit:canvas
+// - Light intensities, shadow values and the PMREM RoomEnvironment are
+//   three.js r160's as the page had them (engine minor 28). Standard
+//   materials get the room as their own envMap so their envMapIntensity
+//   applies as r160 did with scene.environment. The canvas textures are CanvasTextures of starhermit:canvas
 //   (sRGB, as the browser build's SRGBColorSpace CanvasTextures were).
 import {
   ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry,
   Color, CylinderGeometry, DataTexture, DirectionalLight, Fog, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh,
-  MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, NoColorSpace, PMREMGenerator,
+  MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, PMREMGenerator,
   PerspectiveCamera, PlaneGeometry, PointLight, Points, PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment,
   SRGBColorSpace, SphereGeometry, SpotLight, TorusGeometry, Vector3, renderer, scene,
 } from "starhermit:scene";
@@ -53,8 +51,6 @@ interface Content { seed: string; theme: string; preplaced?: { deg: number; type
 interface RulesEvent { type: string; angle?: number; blockedBy?: string }
 
 const PI = Math.PI;
-/** The RoomEnvironment's brightness against the browser build's (matched by eye, as bistro-builder found). */
-const ENV_INTENSITY = 0.3;
 
 // Authored framing constants (no magic offsets scattered through code)
 const FRAMING = {
@@ -204,38 +200,6 @@ function woodTexture(seed: string, px: number): Texture {
     paintWood(c.getContext("2d"), theme, seed, px);
     const tex = new CanvasTexture(c);
     tex.colorSpace = SRGBColorSpace;
-    tex.anisotropy = 8;
-    return tex;
-  });
-}
-/** The carved face's relief (three's bumpMap of the colour texture, bumpScale 2.2): a normal map from its luminance. */
-function woodNormals(seed: string, px: number): Texture {
-  return cached(`normal:${theme.id}:${seed}:${px}`, () => {
-    const c = new OffscreenCanvas(px, px);
-    const g = c.getContext("2d");
-    paintWood(g, theme, seed, px);
-    const src = g.getImageData(0, 0, px, px).data;
-    const h = new Float32Array(px * px);
-    for (let i = 0; i < px * px; i++) h[i] = (src[i * 4]! * 0.299 + src[i * 4 + 1]! * 0.587 + src[i * 4 + 2]! * 0.114) / 255;
-    const out = new Uint8Array(px * px * 4);
-    const k = 2.2 * (px / 512) * 1.5; // slope per texel, as the bump's strength reads at this size
-    for (let y = 0; y < px; y++) {
-      for (let x = 0; x < px; x++) {
-        const l = h[y * px + Math.max(0, x - 1)]!, r = h[y * px + Math.min(px - 1, x + 1)]!;
-        const u = h[Math.max(0, y - 1) * px + x]!, d = h[Math.min(px - 1, y + 1) * px + x]!;
-        let nx = (l - r) * k, ny = (d - u) * k;
-        const nz = 1;
-        const len = Math.hypot(nx, ny, nz);
-        nx /= len; ny /= len;
-        const o = (y * px + x) * 4;
-        out[o] = Math.round((nx * 0.5 + 0.5) * 255);
-        out[o + 1] = Math.round((ny * 0.5 + 0.5) * 255);
-        out[o + 2] = Math.round((nz / len * 0.5 + 0.5) * 255);
-        out[o + 3] = 255;
-      }
-    }
-    const tex = new DataTexture(out, px, px);
-    tex.colorSpace = NoColorSpace;
     tex.anisotropy = 8;
     return tex;
   });
@@ -516,24 +480,25 @@ function setup(): void {
 
 function buildLights(): void {
   const t = theme;
-  const key = new DirectionalLight(t.key, 2.4 / PI);
+  const key = new DirectionalLight(t.key, 2.4);
   key.position.set(2.5, 4, 4);
+  // Shadow frustum fitted tightly around the wheel, its stand and the flanking posts.
+  Object.assign(key.shadow.camera, { left: -3.3, right: 3.3, top: 3.1, bottom: -3.1, near: 1.5, far: 12 });
+  key.shadow.camera.updateProjectionMatrix();
   key.shadow.bias = -0.0004;
-  key.shadow.normalBias = 1;
-  key.shadow.radius = 2; // PCFSoftShadowMap's soft edge
-  key.shadow.distance = 12;
-  const fill = new HemisphereLight(t.fill, t.floor, 0.9 / PI);
-  const accent = new PointLight(t.accent, 6 / PI, 12, 1.6);
+  key.shadow.normalBias = 0.015;
+  const fill = new HemisphereLight(t.fill, t.floor, 0.9);
+  const accent = new PointLight(t.accent, 6, 12, 1.6);
   accent.position.set(0, 0.3, 2.5);
   // Cool rim light from behind the wheel: separates steel edges from the dark stage.
-  const rimLight = new DirectionalLight(new Color(t.fill).lerp(new Color("#ffffff"), 0.4), 1.1 / PI);
+  const rimLight = new DirectionalLight(new Color(t.fill).lerp(new Color("#ffffff"), 0.4), 1.1);
   rimLight.position.set(-2, 3, -4);
   envGroup.add(key, key.target, fill, accent, rimLight);
   keyLight = key;
   accentLight = accent;
   if (look!.detailed) {
     // Theatrical overhead spot: a warm pool of light on the wheel and the boards below it.
-    const spot = new SpotLight(t.key, 24 / PI, 16, 0.42, 0.65, 1.6);
+    const spot = new SpotLight(t.key, 24, 16, 0.42, 0.65, 1.6);
     spot.position.set(0, 6.5, 3.2);
     spot.target.position.set(0, -0.6, 0);
     envGroup.add(spot, spot.target);
@@ -637,8 +602,7 @@ function buildWheel(c: Content): void {
   const tex = woodTexture(`${c.seed}:wood`, px);
   if (BUD.material === "lambert") faceMaterial = keep(new MeshLambertMaterial({ map: tex }));
   else {
-    const normalMap = detailed ? woodNormals(`${c.seed}:wood`, Math.min(1024, px)) : null;
-    const o = { map: tex, roughness: 0.72, metalness: 0.02, envMapIntensity: 0.18, normalMap };
+    const o = { map: tex, roughness: 0.72, metalness: 0.02, envMapIntensity: 0.18, bumpMap: detailed ? tex : null, bumpScale: 2.2 };
     faceMaterial = BUD.material === "standard"
       ? keep(new MeshStandardMaterial(o))
       : keep(new MeshPhysicalMaterial({ ...o, clearcoat: detailed ? 0.22 : 0, clearcoatRoughness: 0.4 }));
@@ -722,7 +686,7 @@ function buildEnvMap(): void {
 function rebuild(): void {
   if (!content || !look) return;
   clearAll();
-  trimTextures([`wood:${theme.id}:${content.seed}`, `normal:${theme.id}:${content.seed}`, `planks:${theme.id}:${content.seed}`, `curtain:${theme.id}`]);
+  trimTextures([`wood:${theme.id}:${content.seed}`, `planks:${theme.id}:${content.seed}`, `curtain:${theme.id}`]);
   scene.background = new Color(theme.sky);
   scene.fog = new Fog(theme.fog, 8, 26);
   buildLights();
@@ -769,6 +733,7 @@ function applyScene(): void {
   const g = look!;
   const shadows = g.shadows > 0;
   renderer.shadowMap.enabled = shadows;
+  renderer.shadowMap.type = PCFSoftShadowMap;
   if (keyLight) {
     keyLight.castShadow = shadows;
     if (shadows) keyLight.shadow.mapSize = g.shadows;
@@ -776,8 +741,17 @@ function applyScene(): void {
   if (g.reflections) {
     buildEnvMap();
     scene.environment = envTex;
-    scene.environmentIntensity = ENV_INTENSITY;
   } else scene.environment = null;
+  // r160 scaled scene.environment by each material's envMapIntensity; the
+  // engine (as three r163+) does that only for a material's own envMap, so
+  // every standard material carries the room while reflections are on.
+  const env = g.reflections ? envTex : null;
+  scene.traverse((o) => {
+    if (o instanceof Mesh || o instanceof InstancedMesh) {
+      const m = o.material;
+      if (m instanceof MeshStandardMaterial && m.envMap !== env) m.envMap = env;
+    }
+  });
   particles?.setCapacity(particleCap(g));
   if (embers) embers.visible = g.particles === "high" && g.budget.embers > 0;
   renderer.ao = g.ao === "off" ? null : {
@@ -946,7 +920,7 @@ export function update(dtRaw: number, state: ViewState, alpha: number): void {
   }
   if (accentLight) {
     const flicker = reducedMotion ? 0 : 0.06 * Math.sin(time * 7.3) + 0.04 * Math.sin(time * 12.9 + 1.7);
-    accentLight.intensity = (6 / PI) * (1 + flicker);
+    accentLight.intensity = 6 * (1 + flicker);
   }
   if (standbyBlade && !standbyBlade.visible && time >= standbyHiddenUntil) standbyBlade.visible = true;
 

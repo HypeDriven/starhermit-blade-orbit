@@ -13,7 +13,7 @@ listed once, at the end, under "Design intent not yet implemented".
 | Genre | Timing / rhythm target game, single input |
 | Players | 1, with asynchronous ranked comparison on the daily board |
 | Session | 20-90 s per stage; a Journey sitting is 5-10 min; a Daily is one attempt of about a minute |
-| Platforms | StarHermit engine 1.24.0 script game: natively in the StarHermit client and in desktop and mobile browsers (portrait and landscape) through the engine's web runtime; keyboard, mouse, touch, gamepad |
+| Platforms | StarHermit engine 1.26.1 script game: natively in the StarHermit client and in desktop and mobile browsers (portrait and landscape) through the engine's web runtime; keyboard, mouse, touch, gamepad |
 | Rendering | `starhermit:scene` (three.js-like names) for the stage, `starhermit:ui` (immediate mode) for the shell, `starhermit:draw` for the key art and drawn glyphs |
 | Hosting | One package (`starhermit.txt`): the engine loader `index.html` and `starhermit-files.json` written by `npm run package`; `score-script.js` is the platform script; `server.js` is a dev-only local server |
 
@@ -21,7 +21,7 @@ listed once, at the end, under "Design intent not yet implemented".
 
 | Path | Owns |
 |---|---|
-| `starhermit.txt` | Manifest: `engine.api=1`, `engine.entry=native/main.ts`, `engine.version=1.24.0`, `engine.minor=16`, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` for every action, `server=score-script.js`, `cover=cover.jpg` |
+| `starhermit.txt` | Manifest: `engine.api=1`, `engine.entry=native/main.ts`, `engine.version=1.26.1`, `engine.minor=28`, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` for every action, `server=score-script.js`, `cover=cover.jpg` |
 | `index.html`, `starhermit-files.json` | The engine's web loader and file index, written by `npm run package` (`starhermit package --web .`); never edited by hand |
 | `native/main.ts` | Entry module: phase machine on the runtime's fixed steps, throw / undo / hint, countdown pre-roll, results and progression, snapshots, input routing (actions, playfield presses), lifecycle |
 | `native/screens.ts` | Top bar, HUD, rails, banner, captions, toast and every screen as `starhermit:ui`; layouts by window size; drawn glyphs (stars, diamonds, medal, check, throw icon) |
@@ -278,15 +278,15 @@ swoop, shortens blade flight to 20 ms, slows particles to 40 %, shortens countdo
 to 250 ms, and disables CSS transitions. Ambient motion (drifting embers, accent-light shimmer) stops under reduced
 motion.
 
-**Graphics.** The renderer uses ACES filmic tone mapping, a hemisphere fill, a warm key directional light with the
-engine's view-based shadow, a cool rim light from behind, and a flickering accent point light (intensities are the
-three.js values ÷ π, the engine's convention). Optional effects per graphics level: key-light shadows, reflections from
-three.js's `RoomEnvironment` through `PMREMGenerator.fromScene` (environment intensity 0.3; per-material
-`envMapIntensity`, strongest on steel), `renderer.ao` (GTAO), `renderer.bloom` (threshold 0.9: sigil halos, hot sparks,
+**Graphics.** The renderer uses ACES filmic tone mapping, a hemisphere fill, a warm key directional light whose
+shadow box is fitted around the wheel, stand and posts, a cool rim light from behind, and a flickering accent point
+light (three.js r160's intensities and shadow values as the browser build had them; engine minor 28). Optional effects per graphics level: key-light shadows, reflections from
+three.js's `RoomEnvironment` through `PMREMGenerator.fromScene` (each standard material carries the room as its
+own envMap at its `envMapIntensity`, strongest on steel, as r160 scaled scene.environment), `renderer.ao` (GTAO), `renderer.bloom` (threshold 0.9: sigil halos, hot sparks,
 bright steel), `renderer.grade` in display space (contrast 0.11, saturation 1.08, cool shadows / warm highlights,
 vignette 0.26), `renderer.antialias` (FXAA / SMAA / MSAA), particles (burst pool 80 or 260 × the budget's multiplier,
 one InstancedMesh whose particles shrink as they fade, plus additive embers behind the wheel at particles high) and
-surface detail (Detailed: the budget's wood texture with a normal map computed from it for the carved relief, worn
+surface detail (Detailed: the budget's wood texture, also its bump map (scale 2.2) for the carved relief, worn
 stage boards, the overhead spot, brass post bands and seeded crates; Plain: flat floor, at most 512 px wood).
 
 **Graphics levels.** The runtime's Options › Graphics choose the level (Auto by default) and own render scale, the
@@ -300,7 +300,7 @@ changes; gameplay is identical on every level.
 | Low | off | off | off | MSAA | off | low | plain | Lambert | one merged vertex-coloured mesh | 48 | 512 px | 0.6 | 0 | ½ |
 | Balanced | 1024 | off | on | FXAA | on | high | detailed | Standard | merged | 64 | 512 px | 1 | 40 | ½ |
 | High | 2048 | on | on | SMAA | on | high | detailed | clearcoat Physical | 4 lit parts | 96 | 1024 px | 1 | 70 | ¾ |
-| Ultra | 4096 | high | on | MSAA | on | high | detailed | clearcoat Physical | 4 parts | 128 | 2048 px (normal map ≤ 1024) | 1.5 | 140 | full |
+| Ultra | 4096 | high | on | MSAA | on | high | detailed | clearcoat Physical | 4 parts | 128 | 2048 px | 1.5 | 140 | full |
 
 The pool and the embers grow with the level above the tier's first (1.64× a level, at most 2×).
 
@@ -369,7 +369,7 @@ reposted.
 ## 12. StarHermit integration
 
 Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=score-script.js`, `version=1.0.0`,
-`ruleset=v1`, `cover=cover.jpg`, `engine.version=1.24.0`, `engine.minor=16`, capabilities `platform,storage,clipboard`.
+`ruleset=v1`, `cover=cover.jpg`, `engine.version=1.26.1`, `engine.minor=28`, capabilities `platform,storage,clipboard`.
 
 | Feature | Status |
 |---|---|
