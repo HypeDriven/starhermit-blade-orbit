@@ -16,7 +16,7 @@
 //   antialias; the grade's GLSL (an S-curve blended 0.22, saturation 1.08,
 //   cool shadows / warm highlights, the vignette) is the built-in
 //   display-space grade with the same curve, tints and vignette.
-// - MeshPhongMaterial (Low's steel) is Lambert; the per-particle opacity of
+// - Low's steel is MeshPhongMaterial as on the page (since minor 29); the per-particle opacity of
 //   the spark pool (a mesh and material each) is one InstancedMesh whose
 //   particles shrink as they fade.
 // - The canvas sat between the top bar and the rails; the scene fills the
@@ -32,7 +32,7 @@
 import {
   ACESFilmicToneMapping, AdditiveBlending, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, CircleGeometry,
   Color, CylinderGeometry, DataTexture, DirectionalLight, Fog, Group, HemisphereLight, InstancedMesh, Matrix4, Mesh,
-  MeshBasicMaterial, MeshLambertMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, PMREMGenerator,
+  MeshBasicMaterial, MeshLambertMaterial, MeshPhongMaterial, MeshPhysicalMaterial, MeshStandardMaterial, PCFSoftShadowMap, PMREMGenerator,
   PerspectiveCamera, PlaneGeometry, PointLight, Points, PointsMaterial, RepeatWrapping, RingGeometry, RoomEnvironment,
   SRGBColorSpace, SphereGeometry, SpotLight, TorusGeometry, Vector3, renderer, scene,
 } from "starhermit:scene";
@@ -113,9 +113,9 @@ function surfaceMat(o: MatOpts): Material {
   if (BUD.material === "lambert") return keep(new MeshLambertMaterial({ color: o.color, map: o.map ?? null }));
   return keep(new MeshStandardMaterial({ color: o.color, map: o.map ?? null, roughness: o.roughness, metalness: o.metalness ?? 0, envMapIntensity: o.envMapIntensity }));
 }
-/** Metal parts: Lambert on Low (three's Phong there), Standard on Balanced, clearcoat Physical on High/Ultra when asked. */
+/** Metal parts: Phong on Low (as the page), Standard on Balanced, clearcoat Physical on High/Ultra when asked. */
 function metalMat(o: MatOpts): Material {
-  if (BUD.material === "lambert") return keep(new MeshLambertMaterial({ color: o.color, vertexColors: !!o.vertexColors }));
+  if (BUD.material === "lambert") return keep(new MeshPhongMaterial({ color: o.color, vertexColors: !!o.vertexColors, specular: 0x9a9a9a, shininess: 70 }));
   const base = { color: o.color, roughness: o.roughness, metalness: o.metalness, envMapIntensity: o.envMapIntensity, vertexColors: !!o.vertexColors };
   if (BUD.material === "standard" || !o.clearcoat) return keep(new MeshStandardMaterial(base));
   return keep(new MeshPhysicalMaterial({ ...base, clearcoat: o.clearcoat, clearcoatRoughness: o.clearcoatRoughness }));
@@ -321,7 +321,7 @@ let bladeMats: { merged: Material; blade: Material; handle: Material; guard: Mat
 function getBladeMats(): NonNullable<typeof bladeMats> {
   if (bladeMats) return bladeMats;
   const merged = BUD.material === "lambert"
-    ? keep(new MeshLambertMaterial({ vertexColors: true }))
+    ? keep(new MeshPhongMaterial({ vertexColors: true, specular: 0x8a8a8a, shininess: 80 }))
     : keep(new MeshStandardMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.75, envMapIntensity: 0.7 }));
   const blade = keep(new MeshPhysicalMaterial({ color: theme.metal, roughness: 0.24, metalness: 0.92, clearcoat: 0.2, clearcoatRoughness: 0.2, envMapIntensity: 0.8 }));
   const handle = keep(new MeshStandardMaterial({ color: theme.handle, roughness: 0.7, envMapIntensity: 0.4 }));
@@ -760,7 +760,8 @@ function applyScene(): void {
     denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === "high" ? 6 : 4, rings: 2, samples: g.ao === "high" ? 16 : 8, radiusExponent: 2 },
   };
   // High threshold: only sigils, sparks and bright steel highlights bloom.
-  renderer.bloom = g.bloom ? { strength: 0.4, radius: 0.35, threshold: 0.9, resolution: g.budget.bloomRes } : null;
+  // The page's r160 UnrealBloomPass strength squared (minor 29 bloom follows r185).
+  renderer.bloom = g.bloom ? { strength: 0.16, radius: 0.35, threshold: 0.9, resolution: g.budget.bloomRes } : null;
   renderer.grade = g.grade ? {
     space: "display", contrast: 0.11, saturation: 1.08,
     shadows: [0.97, 0.98, 1.04], highlights: [1.04, 1.0, 0.95], split: [0.2, 0.8],
