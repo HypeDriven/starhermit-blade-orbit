@@ -679,7 +679,7 @@ let envTex: Texture | null = null;
 /** three.js's RoomEnvironment prefiltered once (the browser build's PMREM room). */
 function buildEnvMap(): void {
   if (envTex) return;
-  try { envTex = new PMREMGenerator().fromScene(new RoomEnvironment(), 0.04).texture; }
+  try { const envRoom = new RoomEnvironment(); envRoom.position.y = 0; /* the page's three (pre-r183) builds the room at the origin */ envTex = new PMREMGenerator().fromScene(envRoom, 0.04).texture; }
   catch (e) { console.warn("environment:", e instanceof Error ? e.message : String(e)); }
 }
 
