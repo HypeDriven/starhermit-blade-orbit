@@ -290,19 +290,21 @@ surface detail (Detailed: the budget's wood texture, also its bump map (scale 2.
 stage boards, the overhead spot, brass post bands and seeded crates; Plain: flat floor, at most 512 px wood).
 
 **Graphics levels.** The runtime's Options › Graphics choose the level (Auto by default) and own render scale, the
-pixel-ratio cap, adaptive resolution, the frame-rate limit and readout, and shadow-map size / MSAA samples. The game
-reads `frame().quality` (low, balanced, high, ultra) and `frame().levelIndex` each frame and applies the matching look
-(`native/quality.ts`), rebuilding the stage (and re-placing the embedded blades from the rules state) when the budget
+pixel-ratio cap, adaptive resolution, the frame-rate limit and readout. The game reads the frame's level each frame:
+the engine effects (shadows and their map size, AO resolution and samples, bloom resolution, grade, anti-aliasing) are
+the level's own (`levelSettings()`, the table every StarHermit game reads) and its quality tier (low, balanced, high,
+ultra) picks the art below (`native/quality.ts`), rebuilding the stage (and re-placing the embedded blades from the rules state) when the budget
 changes; gameplay is identical on every level.
 
-| Tier | Shadows | AO | Bloom / grade | AA | Reflections | Particles | Detail | Materials | Blades | Wheel segments | Face texture | Particle pool × | Embers | Bloom res |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Low | off | off | off | MSAA | off | low | plain | Lambert wood, Phong steel | one merged vertex-coloured mesh | 48 | 512 px | 0.6 | 0 | ½ |
-| Balanced | 1024 | off | on | FXAA | on | high | detailed | Standard | merged | 64 | 512 px | 1 | 40 | ½ |
-| High | 2048 | on | on | SMAA | on | high | detailed | clearcoat Physical | 4 lit parts | 96 | 1024 px | 1 | 70 | ¾ |
-| Ultra | 4096 | high | on | MSAA | on | high | detailed | clearcoat Physical | 4 parts | 128 | 2048 px | 1.5 | 140 | full |
+| Tier | Reflections | Particles | Detail | Materials | Blades | Wheel segments | Face texture | Particle pool × | Embers |
+|---|---|---|---|---|---|---|---|---|---|
+| Low | off | low | plain | Lambert wood, Phong steel | one merged vertex-coloured mesh | 48 | 512 px | 0.6 | 0 |
+| Balanced | on | high | detailed | Standard | merged | 64 | 512 px | 1 | 40 |
+| High | on | high | detailed | clearcoat Physical | 4 lit parts | 96 | 1024 px | 1 | 70 |
+| Ultra | on | high | detailed | clearcoat Physical | 4 parts | 128 | 2048 px | 1.5 | 140 |
 
-The pool and the embers grow with the level above the tier's first (1.64× a level, at most 2×).
+The pool and the embers grow with the level's particle budget against the tier's anchor level (quantum, molecular,
+terrestrial, galactic; at most 2×); the face texture is held to the level's largest texture.
 
 **Visual assets the design calls for**: store cover (`coverart.png`), title backdrop (`assets/title-backdrop.webp`), a
 hero throwing-knife model (`assets/throwing-knife.glb`), icon and favicon. See section 15.

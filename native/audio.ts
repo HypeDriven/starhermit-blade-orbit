@@ -13,8 +13,9 @@
 // with the same envelope; the synthesized stand-ins the browser build played
 // while a sample loaded, and its synth ambience bed, are not ported: the
 // engine's browser runtime drops clip loads and plays while a synthesis graph
-// changes (the arrow-exodus port's finding). Clips load once the mixer runs
-// (natively at once, in a browser after the first press), one at a time.
+// changes (the arrow-exodus port's finding). Every clip loads at start
+// (onStart), all at once; a cue whose clip is still loading is silent (its
+// caption still shows).
 import { context, createClip, loadClip, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
 import { makeRng } from "../js/rules.js";
 
@@ -30,22 +31,14 @@ const AMBIENCE: Record<string, string> = { hearth: "ambience-hearth", wind: "amb
 const CAPTIONED = new Set(["throw", "embed", "miss-blade", "miss-marker", "win", "lose", "tick", "go", "achievement", "combo"]);
 
 const clips = new Map<string, AudioClip>();
-/** Clips still to load, one at a time (a burst of loads and clip creations
- * made the web runtime's audio port time out on a loaded machine). */
-const queue: string[] = [];
-let loading = false;
 let onCaption: ((type: string, detail: { combo?: number }) => void) | null = null;
-let wantClips = false;
 
-function load(name: string): void { if (!queue.includes(name)) queue.push(name); }
-function pump(): void {
-  if (loading || !queue.length) return;
-  const name = queue.shift()!;
-  loading = true;
-  loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); loading = false; }, (e: unknown) => { console.warn(`sfx ${name}: ${String(e)}`); loading = false; });
+/** Loads every clip at once (onStart); a cue whose clip is still loading is skipped. */
+export function loadSfx(): void {
+  for (const name of new Set([...Object.values(SAMPLES), ...Object.values(AMBIENCE)])) {
+    loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => console.warn(`sfx ${name}: ${String(e)}`));
+  }
 }
-/** Asks for the clips; they load once the mixer runs (see update). */
-export function loadSfx(): void { wantClips = true; }
 export function setOnCaption(cb: (type: string, detail: { combo?: number }) => void): void { onCaption = cb; }
 
 /** Plays a logical event's sample and emits its caption. */
@@ -56,7 +49,7 @@ export function event(type: string, detail: { combo?: number } = {}): void {
   if (!clip) return;
   const bus: Bus = type === "click" ? "interface" : "effects";
   try { playClip(clip, { bus, gain: LEVEL.effects }); }
-  catch { clips.delete(file!); load(file!); } // a clip the mixer lost: load it again
+  catch { /* the mixer is full this frame: skip it */ }
 }
 
 // -- the music stem ---------------------------------------------------------------------
@@ -106,19 +99,12 @@ export function setPaused(on: boolean): void {
   try { ambience.fade(on ? 0 : 0.6 * LEVEL.ambience, 0.3); } catch { ambience = null; }
 }
 
-/** Each frame: the clips once the mixer runs, one rendered note a frame, the
+/** Each frame, once the mixer runs: one rendered note every half second, the
  * ambience once its clip is in, then the stem's next notes by mixer time. */
 export function update(): void {
-  if (context.state !== "running") return;
-  if (wantClips) {
-    wantClips = false;
-    for (const name of new Set([...Object.values(SAMPLES), ...Object.values(AMBIENCE)])) load(name);
-    return;
-  }
-  pump();
-  if (loading || queue.length) return;
+  if (context.state !== "running") return; // starting sound still waits for the mixer
   try {
-    // the stem's notes once the samples are in, one every half second
+    // the stem's notes, one every half second
     if (context.currentTime >= nextRender) {
       for (const f of SCALE) for (const k of [1, 2]) {
         if (!notes.has(f * k)) { notes.set(f * k, noteClip(f * k)); nextRender = context.currentTime + 0.5; return; }

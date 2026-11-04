@@ -66,7 +66,7 @@ const FRAMING = {
 
 const camera = new PerspectiveCamera(FRAMING.fov, 16 / 9, 0.1, 60);
 let look: Look | null = null;
-let BUD: Budget = { material: "physical", mergedBlades: false, segments: 96, texture: 1024, particles: 1, embers: 70, bloomRes: 1 };
+let BUD: Budget = { material: "physical", mergedBlades: false, segments: 96, texture: 1024, particles: 1, embers: 70 };
 let reducedMotion = false;
 let content: Content | null = null;
 let theme: Theme = themeById("ember-oak");
@@ -736,6 +736,7 @@ function applyScene(): void {
   renderer.shadowMap.type = PCFSoftShadowMap;
   if (keyLight) {
     keyLight.castShadow = shadows;
+    // Since minor 23 the engine keeps the game's mapSize whatever the level, so the level's size is set here.
     if (shadows) keyLight.shadow.mapSize = g.shadows;
   }
   if (g.reflections) {
@@ -754,14 +755,18 @@ function applyScene(): void {
   });
   particles?.setCapacity(particleCap(g));
   if (embers) embers.visible = g.particles === "high" && g.budget.embers > 0;
-  renderer.ao = g.ao === "off" ? null : {
+  // The browser build's composer chain with the level's effects (levelSettings()): which run, AO's
+  // resolution and samples, bloom's resolution. Full-resolution AO (the engine's "high") takes the
+  // browser's Ultra denoise radius.
+  const ao = g.ao, full = !!ao && ao.resolution >= 1;
+  renderer.ao = ao && {
     blendIntensity: 0.75, radius: 0.35, distanceExponent: 1.5, thickness: 0.6, scale: 1.0,
-    samples: g.ao === "high" ? 16 : 8,
-    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: g.ao === "high" ? 6 : 4, rings: 2, samples: g.ao === "high" ? 16 : 8, radiusExponent: 2 },
+    samples: ao.samples, resolution: ao.resolution,
+    denoise: { lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: full ? 6 : 4, rings: 2, samples: ao.denoiseSamples, radiusExponent: 2 },
   };
   // High threshold: only sigils, sparks and bright steel highlights bloom.
   // The page's r160 UnrealBloomPass at its own strength (bloom model r160).
-  renderer.bloom = g.bloom ? { model: "r160", strength: 0.4, radius: 0.35, threshold: 0.9, resolution: g.budget.bloomRes } : null;
+  renderer.bloom = g.bloom === null ? null : { model: "r160", strength: 0.4, radius: 0.35, threshold: 0.9, resolution: g.bloom };
   renderer.grade = g.grade ? {
     space: "display", contrastCurve: "s", contrast: 0.22, saturation: 1.08,
     shadows: [0.97, 0.98, 1.04], highlights: [1.04, 1.0, 0.95], split: [0.2, 0.8],

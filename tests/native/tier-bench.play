@@ -1,0 +1,30 @@
+# Graphics-tier bench (tools/engine-tier-bench.mjs): Practice (Easy) through the real UI, past the
+# countdown, settle on the spinning wheel 120 frames, then measure about 600 frames of play: five
+# throws (blades flying and sticking, sparks and chips), embers drifting, the wheel turning.
+until 300 Play
+frames 5
+click Play
+until 60 Choose a mode
+frames 5
+click Practice
+until 60 Practice — Easy
+frames 5
+click Practice — Easy
+until 60 Begin
+frames 5
+click Begin
+frames 240
+frames 120
+measure start
+frames 40
+key Space 2
+frames 110
+key Space 2
+frames 110
+key Space 2
+frames 110
+key Space 2
+frames 110
+key Space 2
+frames 120
+measure stop
