@@ -18,7 +18,7 @@
     "native/i18n.ts": {"sha256": "b1a9c1c98accdcfce99db37adbcd915b062da3a17e9825def812fde1ac4b5d35", "size": 1811},
     "native/main.ts": {"sha256": "0748008fcc598a06979be37189d76a05331f15a0ee0387039bf1805b564c848a", "size": 27361},
     "native/platform.ts": {"sha256": "8ac6d9f6c0c0894fdcb2cafb4154dbde10a26893052de64e7f97338dbf56e6bb", "size": 13171},
-    "native/quality.ts": {"sha256": "c336948b2b44b662e1b348a910cf68a76d0fab21688e8a313c400f3cd2be0c21", "size": 4570},
+    "native/quality.ts": {"sha256": "20e7721fe8cd2f0adfdaa1f88afd0ac1ceebb5c4e161eb7373213720f2144294", "size": 4798},
     "native/render.ts": {"sha256": "17fa5bedc2787103851900d1c7514efd6cbc3db3d10c735b61948e95908c36d1", "size": 43773},
     "native/screens.ts": {"sha256": "c0f2118037b4e42188955cd4396b306e75e4c700f71f347c5ea5636ba1231109", "size": 41812},
     "native/style.ts": {"sha256": "4296c18e9dba073fd26679bb750e7d71165f51c603ad3c80dd38d93d9073eea5", "size": 2666},
@@ -43,7 +43,7 @@
     "sfx/ui-hint.opus": {"sha256": "15d227f15e4245b79ef25a614dd41ff471b567b7565f117bdd9484b7e5c237ba", "size": 16349},
     "sfx/ui-pause.opus": {"sha256": "4949ebdfe37738a493028cdb1e11b80ca65e1a999b639e05256b68408ce2b8f4", "size": 11379},
     "sfx/ui-undo.opus": {"sha256": "f5b988c0c79121824e5ce9fe5d8a5d6e255717d0ec0a66b2ee98382a2bc82834", "size": 11420},
-    "spec.md": {"sha256": "76a2771ee40582a7ef2f75af40f828e39b3e2812631589ccdc74979427153689", "size": 40457},
+    "spec.md": {"sha256": "f85bc48f322dab9d546f088177cf998f433bad5f8aafc2310859babfc8c8944e", "size": 40615},
     "starhermit.txt": {"sha256": "43e9728639b5cad9ef51465e30c94974d9b0f8cadc1a22b52d77595691640125", "size": 1385}
   },
   "excluded": ["assets/throwing-knife.glb", "data/", "knownissues.md", "node_modules/", "package-lock.json", "package.json", "server.js", "test-results/", "tests/", "tools/", "tsconfig.json"],
