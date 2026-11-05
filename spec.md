@@ -28,8 +28,6 @@ listed once, at the end, under "Design intent not yet implemented".
 | `native/render.ts` | The stage on `starhermit:scene`: procedural wheel, blades, sigils, stage dressing, particles, embers, camera framing (view offset), the look per graphics level |
 | `native/geometry.ts` | three.js `Shape` + `ExtrudeGeometry` for the blade profile (from the arrow-exodus port) |
 | `native/quality.ts` | The old presets and budgets keyed by the runtime's quality tier and level |
-
-Low (quantum) keeps MSAA instead of the level's "off" until engine 1.36.2: engine 1.36.1 recolours fog, haze and translucent overlays without anti-aliasing.
 | `native/audio.ts` | Clips on the runtime's buses, ambience loops, the rendered music stem, captions |
 | `native/platform.ts` | The engine save (progress document), the `localStorage` shim for `js/session.js`, game settings and legacy migration, player chip, invite, leaderboard read and score posting |
 | `native/i18n.ts`, `native/style.ts` | Locale from the runtime's interface language; style sheet registration and palette tokens |
