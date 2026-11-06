@@ -65,7 +65,6 @@ export const app = {
   countdown: null as string | null,
   tutorialStep: null as number | null,
   hintTicks: null as number | null,
-  toast: null as { text: string; until: number } | null,
   caption: null as { text: string; until: number } | null,
   confirmReset: false,
   signedOut: false,
@@ -142,7 +141,12 @@ export function totalOf(state: Session["state"]): number {
 export function announce(msg: string, assertive = false): void {
   if (msg) ui.announce(msg, { politeness: assertive ? "assertive" : "polite" });
 }
-export function toast(text: string): void { app.toast = { text, until: now() + 2.6 }; }
+let shownToast: ui.Toast | null = null;
+/** One toast at a time, at the window's bottom (20 px up; the stack's margin is 16). */
+export function toast(text: string): void {
+  shownToast?.dismiss();
+  shownToast = ui.toast!(text, { duration: 2.6, style: "toast", dismissible: false, announce: false, position: "bottom", offset: 4 });
+}
 function haptic(ms: number): void { if (settings.haptics) vibrate(ms); }
 /** The concise board model the browser build's screen-reader mirror held. */
 function mirror(state: Session["state"]): string {
@@ -571,7 +575,7 @@ onStart(() => {
 onPreferencesChange((p) => { render.setReducedMotion(p.reducedMotion); applyPalette(settings.palette, p.highContrast); });
 platform.onSettingsChange(() => applyPalette(settings.palette, preferences().highContrast));
 platform.onProgressMerged(() => { progression = store.getProgression(); });
-onSessionEnded(() => { app.signedOut = true; toast(t("acct.signedOut")); });
+onSessionEnded(() => { app.signedOut = true; toast(t("starhermit.signedOut")); });
 onPlayerChange((p) => { if (p) app.signedOut = false; });
 onSuspend(() => {
   // Backgrounding pauses the round (with its snapshot) and surfaces the pause panel.
@@ -601,9 +605,7 @@ onUpdate((dt) => {
   frameDt = dt;
   applyLook();
   audio.update();
-  audio.flushPending();
   const t0 = now();
-  if (app.toast && t0 > app.toast.until) app.toast = null;
   if (app.caption && t0 > app.caption.until) app.caption = null;
 });
 onRender((alpha) => {

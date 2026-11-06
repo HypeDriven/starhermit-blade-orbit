@@ -35,7 +35,7 @@ listed once, at the end, under "Design intent not yet implemented".
 | `js/content.js` | Themes, stage generator, 40 Journey stages, 4 tutorials, daily seed, practice, 4 challenges, validators |
 | `js/session.js` | `Session` (commands, undo, replay envelope, snapshots), `verifyReplay`, `store` (over `localStorage`), achievements |
 | `js/migrate.js` | Save document, cross-device merge, the browser build's cloud save and settings keys |
-| `js/i18n.js`, `js/account-strings.js` | String tables in nine locales (account lines folded in as `acct.*`), `t`, `setLocale` |
+| `assets/strings.json` | String tables in nine locales on the engine's `strings` (account lines its `starhermit.*` where it has them) |
 | `tools/ui-style.css` → `assets/ui-style.json` | The class-based style sheet and its `starhermit css` conversion (`npm run css`) |
 | `tools/plan.mjs`, `tools/package-web.mjs`, `tools/css.mjs`, `tools/browser-play.mjs` | Play-script throw plans, packaging, CSS conversion, headless-Chrome play of the package |
 | `score-script.js` | StarHermit platform script (`server=`): range-checks a finished run's total and posts it to the `high-score` leaderboard (canonical copy in the games repo's `tools/score-script.js`) |
@@ -346,7 +346,7 @@ SFX event table (source for `sfx/manifest.txt`):
 Every player-facing string ships in en-US, en-GB, es-419, es-ES, de-DE, fr-FR, fr-CA, pt-BR and it-IT: menus, mode
 cards, briefing, HUD, rails, countdown, hints, announcements and the board summary, results, help cards and controls,
 settings, captions, stage/tier/tutorial/challenge/achievement names, and the account lines. Tables live in
-`js/i18n.js` (account lines from `js/account-strings.js` folded in as `acct.*`). Content keeps its English names as
+`assets/strings.json` (account lines are the engine's `starhermit.*` where it has them). Content keeps its English names as
 data and is named through the tables at display time.
 
 The locale is the runtime's interface language (`preferences().language`: the player's choice in Options › Language,
@@ -383,14 +383,14 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=scor
 | Invite | Signed in, the title menu shows **Invite a friend**, which copies `inviteLink()` and confirms with a toast (the link is shown if the clipboard is refused) |
 | Controls | `control.throw`, `pause`, `back`, `undo`, `hint`, `restart` with `engine.gamepad.*` defaults; rebinding is the runtime's |
 | Leaderboard read | The `high-score` board (`leaderboards.list` / `entries`), names from `profile()`; guests see the sign-in note |
-| Leaderboard submit | Signed in, every finished Journey, Daily or Challenge run (won or lost; not Practice or Learn) posts its total through a practice session whose socket carries `{ type: 'result', scores: { 'high-score': n } }` to `score-script.js` (integer 0–1,000,000; negative totals post as 0). The results show "Posting score…", then "Leaderboard rank: #N" (or posted / not posted) |
+| Leaderboard submit | Signed in, every finished Journey, Daily or Challenge run (won or lost; not Practice or Learn) posts its total through `leaderboards.submitScore` to `score-script.js` (integer 0–1,000,000; negative totals post as 0). The results show "Posting score…", then "Leaderboard rank: #N" (or posted / not posted) |
 | Time | No server-time API: the top-bar clock and the daily seed use the device's UTC date |
 | Not used | Platform achievements (none declared; unlocks stay in the save), matchmaking, rooms, chat, replays, voice, friends filtering |
 
 ## 13. Technical architecture
 
 - `rules` is pure; it runs identically on the engine, in the unit tests and in `server.js`. The engine client imports
-  `js/rules.js`, `js/content.js`, `js/session.js`, `js/i18n.js` and `js/migrate.js` as ES modules, unchanged except for
+  `js/rules.js`, `js/content.js`, `js/session.js` and `js/migrate.js` as ES modules, unchanged except for
   the string tables' locale switch.
 - `session` is the only writer of rules state: it issues ids `<sessionId>:<seq>`, keeps the command log, undo snapshots,
   periodic hashes and builds the replay envelope `{schema 1, rulesVersion 1, content, seed, initialHash, timestampOffset,

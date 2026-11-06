@@ -36,12 +36,12 @@ import {
 interface Layout { lw: number; lh: number; sc: number; ox: number; oy: number; W: number; H: number; wide: boolean; shortLand: boolean; portrait: boolean; narrow: boolean }
 function layoutNow(): Layout {
   const f = frame();
-  const sc = ui.preferences().scale;
-  const sa = f.safeArea;
-  const lw = Math.max(1, (f.width - sa.left - sa.right) / sc), lh = Math.max(1, (f.height - sa.top - sa.bottom) / sc);
+  const v = ui.viewport!();
+  const sc = v.scale;
+  const lw = Math.max(1, v.width), lh = Math.max(1, v.height);
   const wide = lw >= 1024;
   const shortLand = !wide && lw > lh && lh <= 500;
-  return { lw, lh, sc, ox: sa.left / sc, oy: sa.top / sc, W: f.width / sc, H: f.height / sc, wide, shortLand, portrait: !wide && lh > lw, narrow: lw <= 560 };
+  return { lw, lh, sc, ox: v.x / sc, oy: v.y / sc, W: f.width / sc, H: f.height / sc, wide, shortLand, portrait: !wide && lh > lw, narrow: lw <= 560 };
 }
 const lastHeight = new Map<string, number>();
 const REM = 16;
@@ -162,7 +162,6 @@ function firstLabel(name: ScreenName): string | null {
 }
 
 let topH = 56;
-let toastH = 40;
 export function drawScreens(): void {
   const L = layoutNow();
   // A screen that just opened focuses its first control once its layout has
@@ -191,16 +190,6 @@ export function drawScreens(): void {
     default: break;
   }
   topbar(L);
-  if (app.toast) {
-    const w = Math.min(L.lw - 32, 560);
-    ui.place("toast", { anchor: "top-start", x: (L.lw - w) / 2, y: Math.max(0, L.lh - 20 - toastH) }, () => {
-      const r = ui.column("toast-box", () => {
-        if (textWidth(app.toast!.text, "toast") + 34 <= w) ui.style("toast").label(app.toast!.text);
-        else ui.style("toast").paragraph(app.toast!.text, w - 34);
-      }, { align: "center" });
-      toastH = r.height / L.sc;
-    }, { width: w, align: "center" });
-  }
 }
 
 // ------------------------------------------------------------------ top bar
@@ -441,15 +430,15 @@ function titleScreen(L: Layout): void {
     const link = platform.inviteLink();
     if (link) {
       list.push({
-        id: "btn-invite", text: t("acct.invite"),
-        act: () => { try { clipboard.writeText(link); toast(t("acct.inviteCopied")); } catch { toast(`${t("acct.inviteFailed")} ${link}`); } },
+        id: "btn-invite", text: t("starhermit.invite"),
+        act: () => { try { clipboard.writeText(link); toast(t("starhermit.inviteCopied")); } catch { toast(t("starhermit.inviteLink", { link })); } },
       });
     }
-    if (!platform.signedIn()) list.push({ id: "btn-sign-in", text: t("acct.signIn"), act: () => { void requestSignIn().catch(() => undefined); } });
+    if (!platform.signedIn()) list.push({ id: "btn-sign-in", text: t("starhermit.signIn"), act: () => { void requestSignIn().catch(() => undefined); } });
     ui.column("menu-stack", () => { for (const b of list) button(b, w); }, { spacing: 9.6, width: w });
     const done = Object.keys(progression.journeyStars).length;
     para(t("title.progress", { done, xp: progression.masteryXp, n: progression.sessionsPlayed }), w, "title-progress", "title-progress", true);
-    if (app.signedOut) para(t("acct.signedOut"), w, "title-progress", "title-signed-out", true);
+    if (app.signedOut) para(t("starhermit.signedOut"), w, "title-progress", "title-signed-out", true);
   }, { center: true, bg: false });
 }
 
@@ -633,7 +622,7 @@ function resultsScreen(L: Layout): void {
     para(best, w, "results-dim", "results-best");
     if (res.lb) {
       const lb = res.lb;
-      para(lb.pending ? t("acct.lbPosting") : !lb.posted ? t("acct.lbNotPosted") : lb.rank ? t("acct.lbRank", { rank: lb.rank }) : t("acct.lbPosted"), w, "results-dim", "results-lb");
+      para(lb.pending ? t("starhermit.leaderboardPosting") : !lb.posted ? t("starhermit.leaderboardNotPosted") : lb.rank ? t("starhermit.leaderboardRank", { rank: lb.rank }) : t("starhermit.leaderboardPosted"), w, "results-dim", "results-lb");
     }
     const list: Btn[] = [
       { id: "btn-results-menu", text: t("btn.menu"), style: ["btn", "btn-ghost"], act: leaveToTitle },

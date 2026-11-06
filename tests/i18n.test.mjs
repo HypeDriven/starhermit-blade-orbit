@@ -1,5 +1,4 @@
-// Every client string in the nine locales: the string tables (js/i18n.js
-// with the account lines of js/account-strings.js folded in) have every
+// Every client string in the nine locales: the string tables (assets/strings.json) have every
 // en-US key with the same placeholders, are really translated, and hold
 // every key the engine client (native/*.ts) asks for. Run: node --test
 import test from 'node:test';
@@ -7,11 +6,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STRINGS, LOCALES, t, setLocale, getLang } from '../js/i18n.js';
+import { readFileSync as readJson } from 'node:fs';
 import { JOURNEY, TUTORIALS, CHALLENGES } from '../js/content.js';
 import { ACHIEVEMENTS } from '../js/session.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const STRINGS = JSON.parse(readJson(path.join(ROOT, 'assets', 'strings.json'), 'utf8'));
+const LOCALES = Object.keys(STRINGS);
 
 test('nine locales, every key with its placeholders', () => {
   assert.deepEqual(LOCALES, ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT']);
@@ -45,24 +46,9 @@ test('every key the engine client asks for exists', () => {
   const missing = [];
   for (const f of fs.readdirSync(path.join(ROOT, 'native')).filter((n) => n.endsWith('.ts'))) {
     const src = fs.readFileSync(path.join(ROOT, 'native', f), 'utf8');
-    for (const m of src.matchAll(/\bt\(\s*"([a-zA-Z0-9_.-]+)"\s*[,)]/g)) if (!keys.has(m[1])) missing.push(`${f}: ${m[1]}`);
+    for (const m of src.matchAll(/\bt\(\s*"([a-zA-Z0-9_.-]+)"\s*[,)]/g)) if (!m[1].startsWith('starhermit.') && !keys.has(m[1])) missing.push(`${f}: ${m[1]}`);
   }
   assert.deepEqual(missing, []);
 });
 
-test('the account lines are folded in, the leaderboard rank keeps its placeholder', () => {
-  for (const loc of LOCALES) {
-    for (const k of ['acct.signIn', 'acct.invite', 'acct.inviteCopied', 'acct.signedOut', 'acct.lbPosting', 'acct.lbRank', 'acct.lbPosted', 'acct.lbNotPosted']) assert.ok(STRINGS[loc][k], `${loc} ${k}`);
-    assert.ok(STRINGS[loc]['acct.lbRank'].includes('{rank}'), loc);
-  }
-});
 
-test('setLocale switches, falls back to en-US and tells listeners', () => {
-  setLocale('de-DE');
-  assert.equal(getLang(), 'de-DE');
-  assert.equal(t('btn.play'), STRINGS['de-DE']['btn.play']);
-  assert.equal(t('hint.wait', { s: '1.5' }), STRINGS['de-DE']['hint.wait'].replace('{s}', '1.5'));
-  setLocale('xx-YY');
-  assert.equal(getLang(), 'en-US');
-  assert.equal(t('no.such.key', null, 'fallback'), 'fallback');
-});

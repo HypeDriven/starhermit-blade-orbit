@@ -9,14 +9,12 @@
 // the volumes, the mute and the voice limit): music → "music", effects and
 // ambience → "effects", the UI click → "interface". The old default bus
 // levels (music 70 %, effects 90 %, ambience 50 %) are folded into each
-// sound's gain. The stem's notes are rendered once into clips (createClip)
-// with the same envelope; the synthesized stand-ins the browser build played
-// while a sample loaded, and its synth ambience bed, are not ported: the
-// engine's browser runtime drops clip loads and plays while a synthesis graph
-// changes (the arrow-exodus port's finding). Every clip loads at start
+// sound's gain. The stem's notes are rendered once into clips by the engine's
+// OfflineAudioContext with the same envelope; the browser build's synthesized
+// stand-ins and synth ambience bed are not ported. Every clip loads at start
 // (onStart), all at once; a cue whose clip is still loading is silent (its
 // caption still shows).
-import { context, createClip, loadClip, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
+import { OfflineAudioContext, context, createClip, loadClip, play as playClip, type AudioClip, type Bus, type Sound } from "starhermit:audio";
 import { makeRng } from "../js/rules.js";
 
 const LEVEL = { music: 0.7, effects: 0.9, ambience: 0.5 };
@@ -38,6 +36,9 @@ export function loadSfx(): void {
   for (const name of new Set([...Object.values(SAMPLES), ...Object.values(AMBIENCE)])) {
     loadClip(`sfx/${name}.opus`).then((c) => { clips.set(name, c); }, (e: unknown) => console.warn(`sfx ${name}: ${String(e)}`));
   }
+  for (const f of SCALE) for (const k of [1, 2]) {
+    renderNote(f * k).then((c) => { notes.set(f * k, c); }, (e: unknown) => console.warn(`note ${f * k}: ${String(e)}`));
+  }
 }
 export function setOnCaption(cb: (type: string, detail: { combo?: number }) => void): void { onCaption = cb; }
 
@@ -57,22 +58,18 @@ const SCALE = [220, 262, 294, 330, 392, 440];
 const RATE = 11025;
 const notes = new Map<number, AudioClip>();
 /** One stem note: a sine rising to 1 in 8 ms and falling exponentially to 0.0001 by 0.9 s (js/audio.js env()). */
-function noteClip(freq: number): AudioClip {
-  const dur = 0.95;
-  const n = Math.round(dur * RATE);
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i++) {
-    const t = i / RATE;
-    const env = t < 0.008 ? 0.0001 * Math.pow(1 / 0.0001, t / 0.008) : t < 0.9 ? Math.pow(0.0001, (t - 0.008) / 0.892) : 0;
-    out[i] = Math.sin(2 * Math.PI * freq * t) * env;
-  }
-  return createClip([out], RATE);
+async function renderNote(freq: number): Promise<AudioClip> {
+  const off = new OfflineAudioContext(1, Math.round(0.95 * RATE), RATE);
+  const osc = off.createOscillator(); osc.frequency.value = freq;
+  const g = off.createGain();
+  g.gain.setValueAtTime(0.0001, 0); g.gain.exponentialRampToValueAtTime(1, 0.008); g.gain.exponentialRampToValueAtTime(0.0001, 0.9);
+  osc.connect(g).connect(off.destination); osc.start(); osc.stop(0.9);
+  return createClip(await off.startRendering());
 }
 const musicRng = makeRng("music:blade-orbit");
 let musicOn = false;
 let intensity = 0;
 let nextNote = 0;
-let nextRender = 0;
 let paused = false;
 
 /** The stem plays under a round; `level` 0–1 (the stage's tier / 6, 0.2 without one). */
@@ -99,17 +96,11 @@ export function setPaused(on: boolean): void {
   try { ambience.fade(on ? 0 : 0.6 * LEVEL.ambience, 0.3); } catch { ambience = null; }
 }
 
-/** Each frame, once the mixer runs: one rendered note every half second, the
- * ambience once its clip is in, then the stem's next notes by mixer time. */
+/** Each frame, once the mixer runs: the ambience once its clip is in, then the
+ * stem's next notes by mixer time (a pair's second 0.22 s later, scheduled). */
 export function update(): void {
   if (context.state !== "running") return; // starting sound still waits for the mixer
   try {
-    // the stem's notes, one every half second
-    if (context.currentTime >= nextRender) {
-      for (const f of SCALE) for (const k of [1, 2]) {
-        if (!notes.has(f * k)) { notes.set(f * k, noteClip(f * k)); nextRender = context.currentTime + 0.5; return; }
-      }
-    }
     if (ambienceKind && !ambience) {
       const clip = clips.get(AMBIENCE[ambienceKind] ?? "");
       if (clip) {
@@ -128,21 +119,7 @@ export function update(): void {
     const f = SCALE[r.int(SCALE.length)]! * (r.next() < 0.2 ? 2 : 1);
     const clip = notes.get(f);
     if (!clip) continue;
-    if (i === 0) { try { playClip(clip, { bus: "music", gain: peak * LEVEL.music }); } catch { /* the mixer is full */ } }
-    else pending.push({ at: now + 0.22 * i, clip, gain: peak * LEVEL.music });
+    try { playClip(clip, { bus: "music", gain: peak * LEVEL.music, when: now + 0.22 * i }); } catch { /* the mixer is full */ }
   }
   nextNote = now + 0.9 + r.next() * 0.9;
-}
-// Second notes of a pair, 0.22 s after the first.
-const pending: { at: number; clip: AudioClip; gain: number }[] = [];
-/** Each frame, after update(): the pair's later notes when their time comes. */
-export function flushPending(): void {
-  if (!pending.length || context.state !== "running") return;
-  const now = context.currentTime;
-  for (let i = pending.length - 1; i >= 0; i--) {
-    const p = pending[i]!;
-    if (now < p.at) continue;
-    pending.splice(i, 1);
-    try { playClip(p.clip, { bus: "music", gain: p.gain }); } catch { /* full */ }
-  }
 }
