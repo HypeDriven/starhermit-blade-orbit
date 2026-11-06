@@ -6,7 +6,7 @@
     "cover.jpg": {"sha256": "eee63ab13d72a3f71d30f1cb9e5a05420bfe874411ba9953f2d00e076897cbc2", "size": 241718},
     "coverart.png": {"sha256": "5641ff77524497a3d2e00d7f7ffc3dc2cf28c47dad1b9522f0bb6c09ff7a1c46", "size": 301607},
     "icon.png": {"sha256": "33a181f3caea14739db176898005297b5d4da7ba7dcf67b6ab00ddff4d387f77", "size": 13523},
-    "index.html": {"sha256": "b8886325f15965146fb70d08c7de5b94dd26c92533cb35657847da898f5bf0e7", "size": 1778},
+    "index.html": {"sha256": "905c5c95a89107d70bb451231f2028670e2f6c153bc77b47eb4e8b22d676568f", "size": 1936},
     "js/account-strings.js": {"sha256": "41f814492e16725e9eac5f5ee7ee00d3853fd2ef3c740b9c365e955e284cd166", "size": 7314},
     "js/content.js": {"sha256": "0d2219cbcaa7ce47689678db12ad55cc9b491a59ac10e272d866172d2e8b6bbd", "size": 15445},
     "js/i18n.js": {"sha256": "27c16fdef488ceb5c3fc7805d0aa2ff33930ed8b349ac0bfe851f62fc3483e4d", "size": 75287},
@@ -43,9 +43,9 @@
     "sfx/ui-hint.opus": {"sha256": "15d227f15e4245b79ef25a614dd41ff471b567b7565f117bdd9484b7e5c237ba", "size": 16349},
     "sfx/ui-pause.opus": {"sha256": "4949ebdfe37738a493028cdb1e11b80ca65e1a999b639e05256b68408ce2b8f4", "size": 11379},
     "sfx/ui-undo.opus": {"sha256": "f5b988c0c79121824e5ce9fe5d8a5d6e255717d0ec0a66b2ee98382a2bc82834", "size": 11420},
-    "spec.md": {"sha256": "cd4210376ccd42c7f6e62f7478d65bfe2c99c69e6e3fd7844c1a6c14bd30fa80", "size": 40457},
-    "starhermit.txt": {"sha256": "c0a442d1a3af7e45302e9600fea5532c2bf1437e4ca9cc52262d785b60cff80b", "size": 1385}
+    "spec.md": {"sha256": "8a7e7b64bfd4ecd1af2c40582647642fd4baea81147284b5c72bbe3bbfbd9118", "size": 40457},
+    "starhermit.txt": {"sha256": "39a21c79de2d7edbe44b4c306699fbd590c55b957c13697b4cc80087b873fecd", "size": 1385}
   },
-  "excluded": ["assets/throwing-knife.glb", "data/", "knownissues.md", "node_modules/", "package-lock.json", "package.json", "server.js", "test-results/", "tests/", "tools/", "tsconfig.json"],
+  "excluded": ["assets/throwing-knife.glb", "knownissues.md", "package-lock.json", "package.json", "server.js", "tests/", "tools/", "tsconfig.json"],
   "format": 1
 }
