@@ -472,3 +472,11 @@ Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=scor
 Sound (volumes, mute, voice limit), graphics (level, frame-rate limit), language, controls, text size, high contrast
 and reduced motion are the StarHermit runtime's Options; the browser build's options panel, `ui-scale.js`,
 `sh-language.js` and `browser-guard.js` are gone (the runtime's web page handles browser interference).
+
+<!-- regional-localization:start -->
+
+### Regional interface languages
+
+The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-SG`, `en-HK`, `en-BQ`, `es-CO`, `de-IT`, `fr-IT`, `es-CL`, `es-AR`, `es-EC`, `de-BR`. These reuse the corresponding existing translations in their language family. The runtime can resolve the exact regional tag. Language selection is available from the game’s Options panel or F2 and is saved per player in `ui.language`. Changes apply during play. Additional national, regional and indigenous language packs are only shipped once every English message has a translation with intact placeholders and markup. Complete additional language tables: `ja-JP`, `nl-BE`, `zh-SG`, `ms-SG`, `ta-SG`, `zh-HK`, `yue-HK`, `nl-NL`, `fi-FI`, `sv-FI`, `et-EE`, `id-ID`, `vi-VN`, `da-DE`, `lb-BE`, `eu-FR`, `oc-FR`, `sl-IT`, `oc-IT`, `ru-FI`, `eu-ES`, `gl-ES`, `ru-EE`, `su-ID`, `co-FR`, `ca-FR`, `fur-IT`, `ca-IT`, `ca-ES`, `bew-ID`, `km-VN`.
+
+<!-- regional-localization:end -->

@@ -1,3 +1,4 @@
+import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // Blade Orbit on the StarHermit engine: the entry module (starhermit.txt
 // engine.entry), played natively by the StarHermit client and in browsers by
 // the engine's web runtime. The rules, content and session are the browser
@@ -608,7 +609,7 @@ onUpdate((dt) => {
   const t0 = now();
   if (app.caption && t0 > app.caption.until) app.caption = null;
 });
-onRender((alpha) => {
+onRender(__l10nRender((alpha) => {
   const s = session;
   // timing assist / hold-to-preview reticle
   if (s && app.phase === "active") {
@@ -630,4 +631,8 @@ onRender((alpha) => {
     // attract mode behind menus: cosmetic idle spin, no sim state
     render.update(frameDt, { rotation: app.daily.rotation, tick: idleTick, slots: [] }, alpha);
   }
-});
+}));
+
+// localization-runtime:menu
+import { installLanguageMenu as __installLanguageMenu } from "./l10n/menu.ts";
+__installLanguageMenu(false);

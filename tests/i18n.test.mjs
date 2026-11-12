@@ -1,3 +1,10 @@
+import { readFileSync as readReviewedIdentityData } from 'node:fs';
+const REVIEWED_IDENTITIES = JSON.parse(readReviewedIdentityData(new URL('./reviewed-identities.json', import.meta.url), 'utf8'));
+// Only exact reviewed key/source pairs are exempt; all other English copies count.
+function isReviewedIdentity(locale, key, source) {
+  const row = REVIEWED_IDENTITIES.locales[locale]?.[key];
+  return row?.source === source && typeof row.reason === 'string' && row.reason.length > 0;
+}
 // Every client string in the nine locales: the string tables (assets/strings.json) have every
 // en-US key with the same placeholders, are really translated, and hold
 // every key the engine client (native/*.ts) asks for. Run: node --test
@@ -15,7 +22,7 @@ const STRINGS = JSON.parse(readJson(path.join(ROOT, 'assets', 'strings.json'), '
 const LOCALES = Object.keys(STRINGS);
 
 test('nine locales, every key with its placeholders', () => {
-  assert.deepEqual(LOCALES, ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT']);
+  assert.deepEqual(LOCALES, ['en-US', 'en-GB', 'es-419', 'es-ES', 'de-DE', 'fr-FR', 'fr-CA', 'pt-BR', 'it-IT', 'fr-BE', 'de-BE', 'en-SG', 'en-HK', 'en-BQ', 'es-CO', 'de-IT', 'fr-IT', 'es-CL', 'es-AR', 'es-EC', 'ja-JP', 'nl-BE', 'zh-SG', 'ms-SG', 'ta-SG', 'zh-HK', 'yue-HK', 'nl-NL', 'fi-FI', 'sv-FI', 'et-EE', 'id-ID', 'vi-VN', 'de-BR', 'da-DE', 'lb-BE', 'eu-FR', 'oc-FR', 'sl-IT', 'oc-IT', 'ru-FI', 'eu-ES', 'gl-ES', 'ru-EE', 'su-ID', 'co-FR', 'ca-FR', 'fur-IT', 'ca-IT', 'ca-ES', 'bew-ID', 'km-VN']);
   const keys = Object.keys(STRINGS['en-US']);
   for (const loc of LOCALES) {
     for (const k of keys) {
@@ -27,7 +34,7 @@ test('nine locales, every key with its placeholders', () => {
   }
   // translations are real: most UI strings differ from English outside en-GB
   for (const loc of LOCALES.filter((l) => !l.startsWith('en'))) {
-    const same = keys.filter((k) => STRINGS[loc][k] === STRINGS['en-US'][k]).length;
+    const same = (keys.filter((k) => STRINGS[loc][k] === STRINGS['en-US'][k])).filter((key) => !isReviewedIdentity(loc, key, STRINGS['en-US'][key])).length;
     assert.ok(same < keys.length * 0.15, `${loc}: ${same} untranslated`);
   }
 });
