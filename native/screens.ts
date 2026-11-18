@@ -180,7 +180,7 @@ function firstLabel(name: ScreenName): string | null {
 }
 
 let topH = 56;
-export function drawScreens(): void {
+function drawScreensImmediate(): void {
   const L = layoutNow();
   // A screen that just opened focuses its first control once its layout has
   // settled; a tall screen moves into its scroll area a frame later, where a
@@ -761,3 +761,10 @@ function settingsScreen(L: Layout): void {
   });
 }
 
+
+export function drawScreens(): void {
+  if (app.screen !== "help") { drawScreensImmediate(); return; }
+  const actions = ["throw","pause","back","undo","hint","restart"];
+  const version = JSON.stringify([(app as any).settings ?? (app as any).options ?? {}, (platform as any).options ?? {}, actions.map((action) => bindings(action))]);
+  ui.retain!("help-screen", version, drawScreensImmediate);
+}
