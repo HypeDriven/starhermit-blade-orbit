@@ -773,6 +773,7 @@ function applyScene(): void {
     vignette: { amount: 0.26, inner: 0.32, outer: 0.9, scale: [1.15, 1] },
   } : null;
   renderer.antialias = g.antialias;
+  renderer.motionBlur = g.bloom !== null ? { intensity: 0.25, samples: 8, maxPixels: 16, targetFps: 60, camera: false } : null;
 }
 
 // ---------------------------------------------------------------- state sync
