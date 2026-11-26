@@ -472,6 +472,8 @@ function clearAll(): void {
 
 function setup(): void {
   built = true;
+  // The stand and the standby blade never move (still scenery, host API 1.49 STATIC_SYNC).
+  stageGroup.movable = false;
   scene.add(envGroup, stageGroup, wheelGroup, fxGroup);
   renderer.camera = camera;
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -517,12 +519,14 @@ function buildEnvironment(): void {
   floor.rotation.x = -PI / 2;
   floor.position.y = -2.2;
   floor.receiveShadow = true;
+  floor.movable = false;
   envGroup.add(floor);
 
   // backdrop curtain: vertical gradient
   const backdrop = new Mesh(new PlaneGeometry(40, 20), keep(new MeshBasicMaterial({ map: curtainTexture(), fog: false })));
   backdrop.position.set(0, 3, -10);
   backdrop.noAO = true;
+  backdrop.movable = false;
   envGroup.add(backdrop);
 
   // stage props: carved posts flanking the wheel; scenery density follows surface detail
@@ -537,6 +541,7 @@ function buildEnvironment(): void {
     post.castShadow = true;
     const cap = new Mesh(capGeo, brass);
     cap.position.set(sx, 2.3, -0.6);
+    post.movable = cap.movable = false;
     envGroup.add(post, cap);
     if (detailed) {
       // brass bands where the carved posts are bound
@@ -544,6 +549,7 @@ function buildEnvironment(): void {
         const band = new Mesh(bandGeo, brass);
         band.rotation.x = PI / 2;
         band.position.set(sx, y, -0.6);
+        band.movable = false;
         envGroup.add(band);
       }
     }
@@ -564,6 +570,7 @@ function buildEnvironment(): void {
     }
     crates.instanceMatrix.needsUpdate = true;
     crates.castShadow = crates.receiveShadow = true;
+    crates.movable = false;
     envGroup.add(crates);
   }
 }

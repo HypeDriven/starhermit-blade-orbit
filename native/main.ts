@@ -18,8 +18,8 @@ import { withLanguageRender as __l10nRender } from "./l10n/menu.ts";
 // hidden window and a slow frame never move the wheel. The countdown's
 // pre-roll, the resolve lock and the results' settle are counted in the same
 // steps, so play scripts replay exactly.
-import { frame, levelSettings, onFixedUpdate, onQuit, onRender, onStart, onSuspend, onUpdate, onPreferencesChange, preferences, setFixedRate } from "starhermit:engine";
-import { onAction, onPointerButton, onTouch, vibrate } from "starhermit:input";
+import { frame, levelSettings, onFixedUpdate, onQuit, onRender, onStart, onSuspend, onUpdate, onPreferencesChange, preferences, setFixedRate, setTargetFps } from "starhermit:engine";
+import { onAction, onPointerButton, onTouch, primaryPointer, vibrate } from "starhermit:input";
 import * as ui from "starhermit:ui";
 import { onPlayerChange, onSessionEnded } from "starhermit:platform";
 import { SIM_FPS } from "../js/rules.js";
@@ -603,10 +603,23 @@ onFixedUpdate(() => {
   }
   if (!session) idleTick++;
 });
+/** The game's frame cap (host API 1.49 setTargetFps, set only on a change): 30 on the title (its
+ * backdrop covers the wheel) and on phone levels (levelIndex <= 3) under a finger, where steady
+ * 33 ms frames beat 33/50 ms jitter; none otherwise. The engine sets it aside while its menus are
+ * open, and the player's frame-rate limit still applies. */
+let frameCap = -1;
+function capFrames(): void {
+  const cap = app.screen === "title" || (frame().levelIndex <= 3 && primaryPointer() === "coarse") ? 30 : 0;
+  if (cap === frameCap) return;
+  frameCap = cap;
+  setTargetFps(cap || null);
+}
+
 let frameDt = 0;
 onUpdate((dt) => {
   frameDt = dt;
   applyLook();
+  capFrames();
   audio.update();
   const t0 = now();
   if (app.caption && t0 > app.caption.until) app.caption = null;
