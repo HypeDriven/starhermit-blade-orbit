@@ -12,7 +12,7 @@
     "metadataSource": "starhermit.txt",
     "createdAt": "2026-09-01T07:00:58.110555+00:00",
     "coverArtSource": "manifest",
-    "coverArtUpdatedAt": "2026-11-23T17:01:19.336741+00:00",
+    "coverArtUpdatedAt": "2026-11-26T11:41:35.201444+00:00",
     "submittedByUserId": "2712e04e-461b-4d23-81ae-e40b429128a8",
     "submittedByUsername": "starhermit",
     "hosting": {
@@ -22,9 +22,9 @@
       "pinnedCommitSha": null,
       "deployedCommitSha": null,
       "deployError": null,
-      "deployedAt": "2026-11-23T17:01:19.326396+00:00",
+      "deployedAt": "2026-11-26T11:41:34.029002+00:00",
       "externalLaunchUrl": null,
-      "engineVersion": "1.47.0",
+      "engineVersion": "1.50.0",
       "deployWarning": null
     },
     "description": "Throw blades into a rotating wooden wheel, timing each strike to avoid embedded blades and glowing wards.",
@@ -36,19 +36,19 @@
     "links": [],
     "isDisabled": false
   },
-  "publishedAt": "2026-11-23T17:01:19.453Z",
-  "sourceCommit": "6b76fd675a8993c0b37c26e07563b90b617f645c",
-  "bytesReceived": 2851060,
-  "archiveSha256": "3f5e032cabde7f799741b7e9e06362fb44f6b20d4a973f103d3dc9b7a7a11d6c",
+  "publishedAt": "2026-11-26T11:41:35.483Z",
+  "sourceCommit": "a7101917c246722110206b0535c643e2df022322",
+  "bytesReceived": 2851027,
+  "archiveSha256": "3e6cd37a67934e532562fb0ec552668a57908a09b5d912a206c85c92b0532870",
   "indexSha256": "89104198d16417bde55dd1b04c555b5f392ab902716da94048e5d44b3b8ff0f6",
   "result": {
     "clientPublished": true,
     "serverImageLoaded": false,
     "imageDigest": null,
-    "bytesReceived": 2851060,
+    "bytesReceived": 2851027,
     "mode": "replace",
     "filesRemoved": 0,
-    "engineVersion": "1.47.0",
+    "engineVersion": "1.50.0",
     "deployWarning": null
   },
   "liveVerification": {
