@@ -13,7 +13,7 @@ listed once, at the end, under "Design intent not yet implemented".
 | Genre | Timing / rhythm target game, single input |
 | Players | 1, with asynchronous ranked comparison on the daily board |
 | Session | 20-90 s per stage; a Journey sitting is 5-10 min; a Daily is one attempt of about a minute |
-| Platforms | StarHermit engine 1.51.0 script game: natively in the StarHermit client and in desktop and mobile browsers (portrait and landscape) through the engine's web runtime; keyboard, mouse, touch, gamepad |
+| Platforms | StarHermit engine 1.52.0 script game: natively in the StarHermit client and in desktop and mobile browsers (portrait and landscape) through the engine's web runtime; keyboard, mouse, touch, gamepad |
 | Rendering | `starhermit:scene` (three.js-like names) for the stage, `starhermit:ui` (immediate mode) for the shell, `starhermit:draw` for the key art and drawn glyphs |
 | Hosting | One package (`starhermit.txt`): the engine loader `index.html` and `starhermit-files.json` written by `npm run package`; `score-script.js` is the platform script; `server.js` is a dev-only local server |
 
@@ -21,7 +21,7 @@ listed once, at the end, under "Design intent not yet implemented".
 
 | Path | Owns |
 |---|---|
-| `starhermit.txt` | Manifest: `engine.api=1`, `engine.entry=native/main.ts`, `engine.version=1.51.0`, `engine.minor=51`, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` for every action, `server=score-script.js`, `cover=cover.jpg` |
+| `starhermit.txt` | Manifest: `engine.api=1`, `engine.entry=native/main.ts`, `engine.version=1.52.0`, `engine.minor=52`, capabilities `platform,storage,clipboard`, `control.*` and `engine.gamepad.*` for every action, `server=score-script.js`, `cover=cover.jpg` |
 | `index.html`, `starhermit-files.json` | The engine's web loader and file index, written by `npm run package` (`starhermit package --web .`); never edited by hand |
 | `native/main.ts` | Entry module: phase machine on the runtime's fixed steps, throw / undo / hint, countdown pre-roll, results and progression, snapshots, input routing (actions, playfield presses), lifecycle |
 | `native/screens.ts` | Top bar, HUD, rails, banner, captions, toast and every screen as `starhermit:ui`; layouts by window size; drawn glyphs (stars, diamonds, medal, check, throw icon) |
@@ -371,7 +371,7 @@ reposted.
 ## 12. StarHermit integration
 
 Manifest `starhermit.txt`: `name=Blade Orbit`, `launch=index.html`, `server=score-script.js`, `version=1.0.0`,
-`ruleset=v1`, `cover=cover.jpg`, `engine.version=1.51.0`, `engine.minor=51`, capabilities `platform,storage,clipboard`.
+`ruleset=v1`, `cover=cover.jpg`, `engine.version=1.52.0`, `engine.minor=52`, capabilities `platform,storage,clipboard`.
 
 | Feature | Status |
 |---|---|
@@ -481,16 +481,16 @@ The string tables include complete regional variants for `fr-BE`, `de-BE`, `en-S
 
 <!-- regional-localization:end -->
 
-## Engine 1.51.0
+## Engine 1.52.0
 
-Browser play uses the StarHermit 1.51.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
+Browser play uses the StarHermit 1.52.0 web runtime on WebGPU, or WebGL 2 where WebGPU is missing. Automatic ray-traced shadows are enabled on supported Vulkan devices, with mapped-shadow fallbacks elsewhere. Packaging creates block-compressed runtime textures and compressed glTF copies, retaining original image fallbacks.
 
 The help screen replays through retained native UI while its contents, options, layout and key bindings are unchanged.
 
 Browser rendering uses the engine's asynchronous pipeline creation so newly encountered materials do not stall the page. Native play retains the engine's synchronous pipeline behavior.
 
-**Frame rate (host API 1.51 `setTargetFps`).** The game caps itself at 30 frames a second on the title (its backdrop covers the wheel) and, under a finger (`primaryPointer() === "coarse"`), on the phone graphics levels (`levelIndex` ≤ 3), where steady 33 ms frames replace 33/50 ms jitter; elsewhere there is no game cap. The sim stays 60 fixed steps a second whatever the frame rate. The engine sets the cap aside while its menus are open, and the player's Frame rate limit still applies.
+**Frame rate (host API 1.52 `setTargetFps`).** The game caps itself at 30 frames a second on the title (its backdrop covers the wheel) and, under a finger (`primaryPointer() === "coarse"`), on the phone graphics levels (`levelIndex` ≤ 3), where steady 33 ms frames replace 33/50 ms jitter; elsewhere there is no game cap. The sim stays 60 fixed steps a second whatever the frame rate. The engine sets the cap aside while its menus are open, and the player's Frame rate limit still applies.
 
-**Still scenery (host API 1.51).** The stage floor, curtain, posts with their caps and bands, the crates and the wheel's stand (with the standby blade) are `movable = false`, so shadow maps cache them from the first frame. The wheel, its blades and the effects stay movable.
+**Still scenery (host API 1.52).** The stage floor, curtain, posts with their caps and bands, the crates and the wheel's stand (with the standby blade) are `movable = false`, so shadow maps cache them from the first frame. The wheel, its blades and the effects stay movable.
 
 Higher graphics tiers use native per-object motion blur for moving pieces and effects. Camera motion stays sharp, lower tiers omit the effect, and the runtime's Motion blur and Reduce motion preferences remain authoritative.
